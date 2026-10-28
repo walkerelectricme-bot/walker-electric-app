@@ -1,0 +1,2344 @@
+<!-- Built by tools/build-web.js from src/Index.html, Styles.html, Logo.html and App.html. Do not edit by hand. -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Walker Electrical Services</title>
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="WES">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <style>
+  /* Black-and-white theme (plan decision 29). Calendar color chips keep their colors because they mirror the WES calendar. */
+  :root { --ink:#000; --paper:#fff; --bg:#f2f2f2; --line:#d0d0d0; --muted:#5a5a5a; --soft:#ececec; --warnbg:#fff4cc; --bad:#000; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size:17px; }
+  #topbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:10px; background:var(--ink); color:var(--paper);
+    padding:8px 12px; min-height:56px; }
+  #topbar img { height:36px; width:auto; display:block; }
+  #topbar .title { font-weight:800; font-style:italic; font-size:16px; letter-spacing:.2px; line-height:1.1; flex:1; text-transform:uppercase; }
+  #topbar .who { font-size:13px; opacity:.85; text-align:right; }
+  main { padding:12px 12px 100px; max-width:720px; margin:0 auto; }
+  nav#tabs { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--paper); border-top:2px solid var(--ink); z-index:5; }
+  nav#tabs a { flex:1; text-align:center; padding:15px 4px calc(15px + env(safe-area-inset-bottom)); text-decoration:none;
+    color:var(--muted); font-weight:600; font-size:16px; }
+  nav#tabs a.active { color:var(--paper); background:var(--ink); }
+  .hidden { display:none !important; }
+  .loading, .empty { padding:24px 10px; text-align:center; color:var(--muted); }
+  .card { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:14px; margin:0 0 12px; }
+  .card h2, .card h3 { margin:0 0 8px; }
+  .card-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+  .card-head h2, .card-head h3 { margin:0; }
+  h1 { font-size:22px; margin:6px 2px 4px; }
+  h2 { font-size:19px; } h3 { font-size:17px; }
+  .sub { color:var(--muted); font-size:15px; margin:0 2px 12px; }
+  .muted { color:var(--muted); font-size:15px; }
+  .small { font-size:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .spread { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; min-height:48px; padding:10px 16px; border-radius:10px;
+    border:2px solid var(--ink); background:var(--paper); color:var(--ink); font-size:17px; font-weight:700; text-decoration:none;
+    cursor:pointer; font-family:inherit; }
+  .btn.primary { background:var(--ink); color:var(--paper); }
+  .btn.big { width:100%; min-height:68px; font-size:22px; border-radius:14px; letter-spacing:.3px; }
+  .btn.small { min-height:40px; padding:6px 12px; font-size:15px; border-width:1.5px; }
+  .btn.block { width:100%; }
+  .btn.danger { border-style:dashed; }
+  .btn:disabled { opacity:.45; }
+  .actions { display:flex; gap:8px; margin-top:12px; } .actions .btn { flex:1; }
+  .drill { display:flex; justify-content:space-between; align-items:center; background:var(--paper); border:1px solid var(--line);
+    border-radius:12px; padding:16px 14px; margin:0 0 12px; text-decoration:none; color:var(--ink); font-weight:700; }
+  .drill .val { color:var(--muted); font-weight:600; }
+  .drill .val:after { content:" \203A"; font-size:20px; }
+  .line { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--soft);
+    text-decoration:none; color:var(--ink); }
+  .line:last-child { border-bottom:none; }
+  .line .l { display:flex; flex-direction:column; min-width:0; }
+  .line .l .t { font-weight:600; overflow-wrap:anywhere; }
+  .line .l .s { color:var(--muted); font-size:14px; }
+  .line .r { text-align:right; flex:none; font-weight:700; }
+  .total { font-weight:800; border-top:2px solid var(--ink); }
+  .chip { display:inline-block; border-radius:12px; padding:2px 10px; font-size:13px; font-weight:700; border:1.5px solid var(--ink);
+    background:var(--paper); white-space:nowrap; }
+  .chip.solid { background:var(--ink); color:var(--paper); }
+  .chip.warn { background:var(--warnbg); }
+  .chip.c-scheduled { border-color:#0b8043; color:#0b8043; }
+  .chip.c-tomato { background:#d50000; border-color:#d50000; color:#fff; }
+  .chip.c-grape { background:#8e24aa; border-color:#8e24aa; color:#fff; }
+  .chip.c-banana { background:#f6bf26; border-color:#f6bf26; color:#000; }
+  .chip.c-basil { background:#0b8043; border-color:#0b8043; color:#fff; }
+  .chip.c-graphite { background:#616161; border-color:#616161; color:#fff; }
+  .chip.c-peacock { background:#039be5; border-color:#039be5; color:#fff; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { flex:1; min-width:70px; min-height:48px; border-radius:10px; border:2px solid var(--ink); background:var(--paper);
+    font-size:16px; font-weight:700; font-family:inherit; color:var(--ink); }
+  .seg button.on { background:var(--ink); color:var(--paper); }
+  input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], input[type=time], select, textarea {
+    width:100%; font-size:17px; padding:12px; border:1.5px solid #8a8a8a; border-radius:10px; background:var(--paper); color:var(--ink);
+    font-family:inherit; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--ink); border-color:var(--ink); }
+  textarea { min-height:80px; }
+  label.field { display:block; margin:12px 0 4px; font-weight:700; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .hours { font-size:28px; font-weight:800; }
+  .note { padding:10px 12px; border-left:4px solid var(--ink); background:var(--soft); border-radius:6px; margin:10px 0; font-size:15px; }
+  .note.warn { background:var(--warnbg); }
+  .toast { position:fixed; left:12px; right:12px; bottom:86px; background:var(--ink); color:var(--paper); padding:14px; border-radius:10px;
+    z-index:10; text-align:center; font-weight:600; }
+  .week { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+  .week .d { display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 0 8px; border:1px solid var(--line);
+    border-radius:10px; background:var(--paper); min-height:78px; cursor:pointer; color:var(--ink); font-family:inherit; font-size:inherit; }
+  .week .d.today { border:2px solid var(--ink); }
+  .week .d.sel { background:var(--ink); color:var(--paper); }
+  .week .d .dw { font-size:12px; opacity:.75; }
+  .week .d .dn { font-weight:800; }
+  .week .d .hrs { font-size:12px; font-weight:700; }
+  .week .d .jobs { font-size:11px; opacity:.8; }
+  table.grid { width:100%; border-collapse:collapse; font-size:14px; }
+  table.grid th, table.grid td { border-bottom:1px solid var(--soft); padding:6px 3px; text-align:center; }
+  table.grid th:first-child, table.grid td:first-child { text-align:left; }
+  table.grid td a { color:var(--ink); }
+  .scroll { overflow-x:auto; }
+  .denied { text-align:center; padding:28px 16px; }
+  .denied img { max-width:260px; width:80%; height:auto; margin:10px auto 18px; display:block; }
+  .denied h1 { font-size:26px; }
+  a { color:var(--ink); }
+  .linklike { background:none; border:none; padding:0; text-decoration:underline; font:inherit; color:var(--ink); cursor:pointer; }
+  /* Job rows (tap to open the popup) */
+  .line.job { cursor:pointer; -webkit-tap-highlight-color:rgba(0,0,0,.08); }
+  .line.job:active, .line.job:focus { background:var(--soft); outline:none; }
+  .line.job .tap { color:var(--muted); font-size:20px; margin-left:2px; }
+  /* Modal (job popup and slip form) */
+  .modal-back { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20; display:flex; align-items:flex-end; justify-content:center; }
+  .modal { background:var(--paper); color:var(--ink); width:100%; max-width:720px; max-height:92vh; overflow-y:auto;
+    border-radius:16px 16px 0 0; border-top:3px solid var(--ink); padding:14px 14px calc(18px + env(safe-area-inset-bottom)); }
+  @media (min-width:740px) { .modal-back { align-items:center; } .modal { border-radius:16px; border:2px solid var(--ink); } }
+  .modal-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; position:sticky; top:-14px;
+    background:var(--paper); padding:4px 0 8px; margin-top:-4px; z-index:1; }
+  .modal-head h2 { margin:0; font-size:20px; overflow-wrap:anywhere; }
+  .xbtn { flex:none; width:44px; height:44px; border-radius:22px; border:2px solid var(--ink); background:var(--paper); color:var(--ink);
+    font-size:24px; line-height:1; font-weight:700; cursor:pointer; font-family:inherit; }
+  .desc { white-space:pre-wrap; overflow-wrap:anywhere; background:var(--soft); border-radius:8px; padding:10px 12px; margin:6px 0 10px; font-size:15px; }
+  .slipfile { white-space:pre-wrap; overflow-wrap:anywhere; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:13px;
+    border:1.5px dashed var(--ink); border-radius:8px; padding:10px; margin:6px 0 10px; }
+  .tier { display:grid; grid-template-columns:1fr 84px 96px; gap:8px; align-items:center; margin:6px 0; }
+  .tier .tn { font-weight:700; }
+  .tier input { padding:10px 8px; text-align:center; }
+  .tierhead { display:grid; grid-template-columns:1fr 84px 96px; gap:8px; font-size:13px; color:var(--muted); font-weight:700; }
+  .mat { display:grid; grid-template-columns:76px 1fr 44px; gap:8px; margin:6px 0; align-items:center; }
+  .mat input { padding:10px 8px; }
+  .mat .rm { min-height:44px; padding:0; }
+  .toggle { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--soft); font-weight:700; }
+  .toggle input { width:28px; height:28px; accent-color:#000; }
+  /* Tools dashboard: two columns on a phone */
+  .tools { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tile { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-height:132px; padding:14px 12px;
+    background:var(--paper); color:var(--ink); border:2px solid var(--ink); border-radius:14px; text-decoration:none; }
+  .tile:active { background:var(--ink); color:var(--paper); }
+  .tile svg { width:34px; height:34px; }
+  .tile .tt { font-weight:800; font-size:16px; line-height:1.2; }
+  .tile .ts { font-size:13px; color:var(--muted); line-height:1.25; }
+  .tile:active .ts { color:var(--paper); }
+  .tile.soon { border-style:dashed; }
+  .tile .badge { position:absolute; top:8px; right:8px; font-size:11px; font-weight:800; padding:2px 7px; border-radius:10px;
+    background:var(--ink); color:var(--paper); text-transform:uppercase; letter-spacing:.3px; }
+  .placeholder { text-align:center; padding:28px 16px; }
+  .placeholder svg { width:56px; height:56px; }
+  /* v0.4 tools: back links, work orders, finish lists, photos, gallery, lightbox */
+  .back { display:inline-block; margin:2px 2px 6px; font-weight:700; text-decoration:none; color:var(--ink); font-size:15px; }
+  .line.wo .l { text-decoration:none; color:var(--ink); flex:1; }
+  .techs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .techbox { display:flex; align-items:center; gap:8px; border:1.5px solid var(--line); border-radius:10px; padding:10px; font-weight:600; }
+  .techbox input, .check input { width:24px; height:24px; accent-color:#000; flex:none; }
+  .check { display:flex; align-items:flex-start; gap:10px; padding:10px 0; flex:1; min-width:0; }
+  .check > span { display:flex; flex-direction:column; min-width:0; }
+  .check .t { font-weight:600; overflow-wrap:anywhere; }
+  .check .s { color:var(--muted); font-size:14px; }
+  .fitem { display:flex; align-items:flex-start; gap:8px; border-bottom:1px solid var(--soft); }
+  .fitem:last-child { border-bottom:none; }
+  .fitem.done .t { text-decoration:line-through; color:var(--muted); }
+  .fbtns { display:flex; gap:6px; padding-top:6px; flex:none; }
+  .fbtns .btn { min-height:36px; padding:4px 10px; }
+  .fjob { border:1.5px solid var(--line); border-radius:10px; padding:10px; margin:6px 0; }
+  .flist { margin:6px 0 8px; padding-left:20px; font-size:15px; }
+  .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(76px, 1fr)); gap:6px; margin:6px 0 8px; }
+  .thumb { position:relative; padding:0; border:1.5px solid var(--ink); border-radius:8px; background:var(--soft); aspect-ratio:1 / 1;
+    overflow:hidden; cursor:pointer; }
+  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .photobox .pcap { margin:4px 0 8px; }
+  .photobox .pick { position:relative; overflow:hidden; }
+  .photobox .pick input { position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }
+  .photobox .pstat { display:block; margin-top:6px; }
+  .lightbox { position:fixed; inset:0; z-index:40; background:#000; color:#fff; display:flex; flex-direction:column; }
+  .lb-head { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; }
+  .lb-cap { font-weight:700; overflow-wrap:anywhere; }
+  .lb-x { background:#000; color:#fff; border-color:#fff; }
+  .lb-img { flex:1; display:flex; align-items:center; justify-content:center; min-height:0; }
+  .lb-img img { max-width:100%; max-height:100%; object-fit:contain; }
+  .lb-meta { padding:8px 12px; font-size:14px; opacity:.85; }
+  .lb-actions { display:flex; gap:8px; padding:8px 12px calc(14px + env(safe-area-inset-bottom)); }
+  .lb-actions .btn { flex:1; background:#000; color:#fff; border-color:#fff; }
+  /* v0.5: tappable time card, version label, slip entries */
+  .tapcard { cursor:pointer; -webkit-tap-highlight-color:rgba(0,0,0,.08); }
+  .tapcard:active, .tapcard:focus { background:var(--soft); outline:2px solid var(--ink); }
+  .tapcard .tap { color:var(--muted); font-size:22px; }
+  #topbar .ver { display:block; font-size:11px; opacity:.7; }
+  p.ver { text-align:center; margin-top:16px; }
+  .line.job.slipentry .t { font-style:italic; }
+  /* v0.6 Gallery add photo + date filter */
+  #gDates label { flex:1; min-width:130px; display:flex; flex-direction:column; gap:4px; }
+  #gAdd .pick { text-align:center; }
+  /* v0.7 points: counter pill, glow, crew picker (v0.8: the Home point tiles are gone) */
+  .ptspill { flex:none; display:inline-flex; align-items:center; gap:4px; min-height:40px; padding:6px 12px; border-radius:20px;
+    background:var(--paper); color:var(--ink); font-weight:800; font-size:15px; text-decoration:none; border:2px solid var(--paper); }
+  .ptspill .ptsval { font-size:18px; }
+  @keyframes wesglow { 0% { box-shadow:0 0 0 0 rgba(246,191,38,.95); } 60% { box-shadow:0 0 0 10px rgba(246,191,38,.35); } 100% { box-shadow:0 0 0 0 rgba(246,191,38,0); } }
+  .earned { animation:wesglow .8s ease-out 1; }
+  @media (prefers-reduced-motion: reduce) { .earned { animation:none; } }
+  .streak { font-weight:800; font-size:18px; margin:0 2px 12px; }
+  .bigpts .ptsbig { display:flex; align-items:baseline; gap:8px; }
+  .bigpts .ptsbig .ptsval { font-size:48px; font-weight:900; }
+  .bigpts .ptsbig .u { font-size:20px; font-weight:800; }
+  .bigpts .streak { margin:8px 0 0; }
+  .crewrow { display:grid; grid-template-columns:1fr 96px; gap:8px; align-items:center; min-height:56px; margin:6px 0; padding:4px 8px;
+    border:2px solid var(--line); border-radius:12px; }
+  .crewrow.on { border-color:var(--ink); background:var(--soft); }
+  .crewrow .cc { display:flex; align-items:center; gap:10px; min-height:48px; cursor:pointer; }
+  .crewrow .cc input { width:28px; height:28px; accent-color:#000; flex:none; }
+  .crewrow .cc > span { display:flex; flex-direction:column; }
+  .crewrow .cc .t { font-weight:700; }
+  .crewrow .cc .s { color:var(--muted); font-size:13px; }
+  .crewrow .ch, .xrow input, .xrow select { padding:10px 8px; text-align:center; }
+  .xrow { display:grid; grid-template-columns:1fr 96px 76px 44px; gap:6px; margin:6px 0; align-items:center; }
+  .xrow .xn { text-align:left; }
+  .xrow .rm { min-height:44px; padding:0; }
+  .tierf .actions .btn { padding:10px 8px; }
+  .req { border-bottom:1px solid var(--soft); padding-bottom:10px; margin-bottom:10px; }
+  label.toggle.card { padding:14px; }
+  /* v0.8 Odds and Ends: big, high-contrast actions (gloves, bright sun) */
+  .oddacts { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+  .oddacts .btn.big { min-height:64px; font-size:20px; }
+  .oddacts .grid2 .btn.big { font-size:18px; }
+  .line.odd .r { flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+  .line.odd .s b { color:var(--ink); }
+  .s.pre { white-space:pre-wrap; }
+  #oddFilter button { min-height:52px; font-size:16px; font-weight:800; }
+  #oPri button { min-width:0; padding:6px 4px; font-size:14px; }
+  /* v0.9 time blocks: one big row per block, big Clock in / Clock out */
+  .center { text-align:center; }
+  .line.blk { min-height:60px; text-decoration:none; color:var(--ink); }
+  .line.blk .t { font-size:19px; font-weight:800; }
+  .line.blk .r b { font-size:19px; }
+  #dayTotal { font-size:20px; font-weight:900; }
+  #clockIn, #clockOut { min-height:76px; font-size:24px; }
+  #clockOut { background:var(--paper); color:var(--ink); border-width:3px; }
+  #clockedSince { margin:8px 0 0; font-weight:700; color:var(--ink); }
+  .t.clockedin { font-weight:900; }
+  #addBlock { margin-bottom:10px; }
+</style>
+
+  <link rel="stylesheet" href="css/shell.css">
+  <script>
+  /* Walker Electrical Services logo, embedded so the app needs no image hosting.
+     Made from walkerelectric.me art: branding/derived/logo-emblem-wes-inc-white-trimmed.png (145x72, white on transparent,
+     for the black header) and logo-primary-wordmark-black-trimmed.png (298x160, black, for light pages). */
+  var WES_LOGO = {
+    emblemWhite: 'data:image/png;base64,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' +
+    'F8P/AGMAzMEsJT5MAAAAAElFTkSuQmCC',
+    wordmark: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASoAAACgBAMAAABJSDwWAAAAMFBMVEUAAAEAAgcAAAEAAQMAHV8AZO8ACPwAUK4AM6EA//8AFkMAf3/UAH8AAAAAAAAAAAFv' +
+    'Rw75AAAAEHRSTlOhLdBtEAgBBQkBRAIGAPtOZRfIfgAAF8BJREFUeNrtnF9sHFd25n9dlO0JVexusk0vZig2qykpix1ZZDdbVJCRKRb1Zx7GskhJMRaILJlK' +
+    'dgNk1hoY2X3YBXYXAeZlMg+BAAcIMMAkjDwGMhlFacv0BLAoqWxaM1iPSLUpy8hYbOqSso0Ekoqt6su2R2R378Ot/kd2k92ixtJD6kWtYlXdr8757nfPOffe' +
+    '8iR4DA+Nf0f176ge/uHJZQV7pu6gGTOyy7mD7Apa0JkV7BEABDWBcwdQJ2Y6syL/E+1QPNMp8s8KWmhG0JIvxyNnoJOgRae6Ey1E/9/ILiA7Z+DcUX+QXRC0' +
+    'CPh9k5oBBK2Av+G+gA3zC3A1A90CzzzQNJ+E9LyH9NVbL8WAZGge9o0BvnnUn+DqPED6qMU99RPg8tGRl2Pioz4B/TFtnqR7MWg+Gzo+nAdyL8fgyfvd54AX' +
+    '4qaVJCJsPN1xINm6ZPOZ68E0IIXDK2BiEoYMWXaxDYCwBUwAWKD+hASQ7LLK7K6fI46xXQAWKXWxA0AHACaAGQc2DgsNSOIn3CsAxwDYsgRkAY0MOSCHhxgI' +
+    'DCzQMFPCicfZv3//X+HsNxkGDWf//kMaJnhx9u8/lhJy762h1v0GrfuH6N3DPQzeSxK4tcHkFTDQ0AFIOr5b+5KC1v3744bcb5AM66CJBRCbCM136nH279//' +
+    'twx0RwzA03UuE/pUn/f4O8aDMDgSEd0WHn9guzU4cmh0EdJtqaVQcnCEdFtqCTz+jjipYGoJTsT6YwARMc9AfHCk2ck0O1m/xwbTapZ6Lunxd8QB2Z5LAhHR' +
+    'bSHbnYzH3/9hstta2JQLibmgkwGzeXQRPH6fKPRB/wCmQfIgGnFlK4MmyzOClQUy6JhY6gfKw6ADMWIAGBIMhARJwzBBwErRhKZ8Bl5S6pcFXnyAMBC8gl84' +
+    'B3kBsKwsYLKhoAxSbIKwFEkpMLAcwETQhYa2dXOPhqnFpACNhc2bw66HU5s3/5FLGqwsxGEAj4aeJA5wkINIBEkAB+/lHjDYvHnzPZBh/KP4icmPQF2voW3d' +
+    'vMXi7l7DRZVjBGl5NNHUgCUBiEPOQqLfsad03vXRD+jotk0cAw7gte17+FCsBww+nJabMqi3giQjZgY/BoBuoN8MSwvbFpBrFx4rCylyXhoMBKimxAJMfmYC' +
+    'msDrQI7GFEEdqeEDDEhDBnbsOGAAzhhgIHfsSBrSAoHcsUO4ttLwqf75vCj4TAoPQlN0AC6bcM0LO3YMaiidwvDyrERXdlBNNW4A3a9sNewBG+MVtph4VV+2' +
+    'HGOjgUb/+fMxkxbTOwyYtJ0/L6ws4Kft/Pn3XEHI4CCRT/MWOq6kenB2oOdNT+Pr+/BKPOfPnz1Aj6EnacAK488rh9sUt7cajCqHJg84+PHHuHCVexo6aDTE' +
+    '+dRtI04iRhKU79xmVOte94k6Gk03DK/pdgV4lqaEYAfZvJT9zFRKh6D9PT4iS1o4lsYBpR351/ngvfwjrTgI5y33dtW07qEJg7DqYQ6jgCEt110YEsiSAobR' +
+    'McjgkMQwuIjXgE4FznaZ1wkglXtNhIccOhtp4gDCJAx7DMIgh/O9G69tJz607dkZe3M02jUXtAVg303strfvtg3os0XiQ1skEgnbBuL2HGDbQMK2N6e82xNB' +
+    'uykxZd9NzNjbvXa71xb9mrBFNLrbjtpz0JBIeI3+HvvWjC2gyWsnEl1ziUSXbfclsnZf1hb9YbHbNiBqN6S67KZEIuHZHXMyNNM/K7otTsQMAUi9P5YKOl0C' +
+    'CNxduE+zXETzAXy6CZA6wHwoCXTET8R8wuPviKeCuQFrfmGTGmPiLGxqsQEnwyEL6LiXBHIDo4tERLcVEXKRiPBdCwKeDgG02IBcVGz3gMn7wrHAUj3ZQNBk' +
+    'eAVAFh0M3VSMUuTcrX5eM6DHTxwDgzA+0jhsNECa+CGrPOeBDUBv3AQwrCz4MQjTBCCa9oEMGgA5A+RRAM964nbZ5QYqnJiPFc7umbpT/cIKxx4RtJb99Dyc' +
+    'bCKSiz+GsajxOEbI0nocUWl59XysUGV4PG0lzMcP1QE+S1bp9o8QlaCKHEWDjxCVv8r5aG7kEaJaGKoMKj75KHn1CZWkITrV92i1Pc5KHY3ObLMeLapK7puJ' +
+    'xnnUqIwVoJyxx65SFJ2R7V+Zig5X/Yu1DBTbxFeG6ppZzX/mMlCe9QRcdUZ98vA7lU4HskDPrW+4BksFcdY1YNdpK/2fKuhSOpIFmLx9uUed8Jkc+0pH542t' +
+    'K3wYbcszSL/5bQCyfqbWVxetN25faLeX9zbomXQy8uCsDb3vPAIPwsb+ch+mZpB7LwD6xcQ9g1/tA+04X7EH4Sdl/VAex2k741YfsuMGE8O8bBEd+Wo9CIfe' +
+    'LfHhiZhsE2i+hSVV6IgIJzyzTv89kLafzhV9mIpxVHF9szoxbnpnoJ31opJ/VOctTcZ1Mz/s7Va+kmyccbvhaSDwoLKeLnhQ8wWm67s3FfTM+TLql1wESLcV' +
+    'nBZdh/+0wavFGvLdcL3GyvV49wF8z50pKMJIz5SxQr44XJwAWHPgGLRKeXW9zoT8PW4zMQxazMmPdvlmd4GhF94y2j6WBLSIv5bH9lllbNdv1Wss4HXI8UKe' +
+    'CD9R//YKPJf52H12ZCZ0axR5xFfTW7eKErY7gPfb9RoLvC2EcbNAj610IT2NYzcaG02AI76W7kk9Fz12LnC6lohsqbQP6kPAr7bUaayASa5HeFyb60X/DcD7' +
+    'JGHnoXN7L1jQNbOwa5q1O6U2A0hR8OBrAHeH6zPWc6fhJsUctAGAOZgI08Sc3Hrj+uIZgOTgO7XkFLIbcPuO0vbeacDpqzMhaV2C+eKrejIAC5ucDEQETrv7' +
+    '2p4OAQu71ooBQ0koSooG/MoAvL+oU1xuGxDW8p53q/nPsh3SBqFM3meOv8TD1SUwCSVDgpYn7zPb9lE35Wdb8p5X7WpJT1y+2Ob4ijmzmltbQxG1YAPgEWWo' +
+    'mvww88TEcP1qPM8bZgmx+qUdPXZ274UScme1lbnGiqP7mRfA6Vo2Os+CHj/8en01KC8GXvTxoozK+PbIzGzmTNllkbWfFLqux2C7tQxVthM2vn+8PmoZctwE' +
+    'vIfdYhF4uDnlOu9IwWdBQK7qweinXTPgxFdEMhMGzHz8fF2q5c/qp6Hj6Uv5JndukgGX5ScufpS/bMSEpp+vFijMbN1OefSqFamr3zhdl2oZPpo2wI19s8NA' +
+    'WG690bprGkAa6ZjvuYISJSG7bRVy7Fr4fzEYGKmAqskPuZOd9VDLcpQ8/Ex7w4TcsZnBTxQztoc3pkSBJFkD8Fcfnk9c/95ukGcrRsjaoIXzf2bfuF9zwtre' +
+    'H4P0d0cgGhjrFiFFKK3bN9vdXDKBIv1LkG6qFnOlWnZ54tARrxghZ38C3vdf23a49i4I0DgCTLT5WronAeTv3hN+wwKQbsqqa0Bjl1ktgjz88zgslGv/hmJK' +
+    'ZQjebbvc1lFjgUD68qq0s+3c3gvqZy6R4ueLYCW13IeueTpuAHFfsuJDjqfGIgL+cKRaNnEZdKexc7bOEFBuvXG9IFEN6M7zBiK1Z7Bh0D23BJBKVQ703v3f' +
+    'rwtIjVTNcRqHIGdMbKkvBAy0z/g+KUajGloyLM95r77bqPgrjyQNQO+q9LK9U12/95cgn1sl83rNhM+tS12Ha8ekRRwlUVpkXA2Hjv625W3SQm7OGD12cUGA' +
+    'Fqk0eZGebreeE7CiflqKSp+Djf9Fv3yp1uxCvuhzJYruqc0Ajq7TaMLdyXyMbPFNOOKb8q3MpuXRgJDLVL1CljphwKzZeLim7EIncOxsPqSTH2U+yf/BnMsP' +
+    's0d8LZ3I+M5D5wKZCtFo39vTnKRSTlue0aeC4LF58WwNGV26DSVRe2YTaA0HPWcAmrsbLhS65ujgGc230HGn936lmKF38uSpnTdg4OxadYaBOAyOfPGtWXtN' +
+    'lmd7MhbAi2NOBpqhe/SAxRP5lWKyT7R+AjTjHBuprFSDI7JPVMxpl6GS7bBwn/TRm6ur1s620UFXDZoHzgLRZNdNT8nkc2D3ueY7ABFP5VkTeezaNKngclWv' +
+    'WP3Q52DjFhpbVlUtufXGwq4zgLYXDO8RYCIhwsWIU4tkR9vtJwGuVpnKOfnuNPL4ClWvUimKCJyTp+idzKziPJUraF3jgftEhFyEzsjF+R1XXNAnxgDZvLhK' +
+    'AaPVPnmKgXg+gl6rUnQZvKNw+fjhqhKVDWUESDrm0AGnjcBw98UAV/ISdRYJ+uIq6Vw62XcKzQ8Doqb6VaMf7ho8+VquSgjY7Q7EfcPmPc0BtguC8c980/AX' +
+    'SqJmM+Q6AagWGGltnRZfdlvLAphVqmrXTLj15+itVd40fEH1snAyfvAAEH7mULjT/4EA3lR6OZniwMQcOGa1dK6799ewSxTT0rUrkPmO0TtZMXH1vKw6uscX' +
+    'SvpvOsc9sUJGys7FjzqmYSA+OEL66NvJo1ZFaoXmfjyMPGaxcL/mCmSTAbMG/KJydiHdTuNoUgizP2YVMlK59cb1XdNAkhFofNNsfMOsZPDUp33Dqi70h3VU' +
+    'a9Nt4LFdSVmRkAQvqUgp7csmgx3N8/GSrtkyvwTI9mJqPnhuhcE133/4F/jvfwPRsTqqtY1DkPuPoG9d8aZaZGbKvaVRxwdvxYtd0+BADsCjFjEBZN88uMLg' +
+    '3dF/UTVBZ6muGvJrJkzH4IdbXi//wxFfS3fiXj7HacjujbsVBHnE19L9njfmBXiuZM4+++bydC40NQb8N6ssLa2p3r6wSRF+6b+WZReRloSAyFU3ORmfLh+A' +
+    'ZDv4BJqvbGjTBsuCmOjU0RE1sq1S1K0yCxARqnRURi3ZPjgChDqWvaOM3FEtHLLoiOPx58pidG0gU5Kr+575tVsY8ol6ZwEug3cKylVL958DEMnlMfIdl0h+' +
+    'iYDwskUX2UuflxTPor8Gvp+EqKh7bqIxDLlh4Ed/UKLP13IG+bXohQ4byYZgSCXvh0ijCWdZe9npwh3bp15BpaSrzpVXm8eRxyzl+KXe60VqDXxog6YV+448' +
+    'MdZ7/62gS5F0tl0uevz9serzB5fCJbSt11bop8E7DPyP8W09hbNv5cx8RcodiMf2vmN14cmLhambYaq2lw5+JwzwEmtMS2ur1dRfB07pl28W4iY9/D7QXxQv' +
+    'wTQkealQp+HpFQ4syR6ibwC0WvnMu25UfAhqWqQ0u3iryYRNefGa8r3HR6SQha4vmC9K6MrsYQxAW1pz/qk6qqwfJgwT+PHQraKxkiAMVD09I5rI0UWucNMo' +
+    'ky7zK6Wk3wV4tRucNeazVpkfvGaAYwGcLoaAVhhG/cUYechrJnkJfqi6hIcSwy0jVbz9FMD3xdrzv6vNpaaC8O2fKn3OZxcDNwWp9obd59zoxeNvseUi/Ian' +
+    '3GykSnSS12PZJ6oGMLXYiqYhOGsCZFvy1BIGeDxZKy/MC9jkgKeeUh42+U6V7MGjvHZSIL/BOlDxd6C/D8CPwy61TAt0A/JDdCPwbGmxtMqUTe9pNbuSjsHz' +
+    'Yl2oshugyTAB3nNrInGAq5pZ6NlDhTCw0A0rkWFakerVXeDEWBcqbpvgjAL8zriqiTytiv9CFsehXOkdSTStUvHMlYLvC9jOOlFxGnLKQfrhWQO4qEoxLW35' +
+    'MCDGs8A/wA8ApMW97pWJTZ9Lqi92V0lL60PVNASf/0hRq/OWmhjZeSwWKMyJpNQqtQS86j7OK8RKpVJliy+XBPJbrA/Vns7OzinY6Ma4E8dbkLoWubGwqyiC' +
+    '34NR4H/B18CdFjdXFM/c2P1ru8Ez19nZyQPr1VbjCoAMUshhjl2bavIW8yy3WuKxS4NYQywPB4pLE754Ka62PUjzxqr9cENVI96Re88gzYZEoVfp9+42z4cm' +
+    'S5+nP7FY2KIDcCDub729rHDSncqb9nf+ETbrFnvmhT/+QKhA10G/Unrm4pzTvqzEcsdXvoxcvt2IVRashq6XKfkV4Oe/v8bmgaq8cuD1Fbc+cfzzZWf6y/8r' +
+    'so1qC1FJSvqtlYOPeFC2e8F7azlvv/batmV5VFIOAfwGTuWJHi6NnbTjR5fnV1+E1lxIWtWDjg+843nvFERTu1uWmqRFzpoDnnKVAUDcKyXVbOeOEt8BBJeq' +
+    'jQBro9I3LIE3P3PfV3xKGU+fj4dnAb78gf9ff+CeO1fqLJErdPJu9agjF3HnyB9Er25vALzjykhPVLnIn1JNnSpppUErLX8XWe/maRdZe5nCKn3wdusSeMf7' +
+    'LOCDrTcqDrr5iOZ/lo7p+nyFSwf+7xBw/+vZGkCtqu2utQyADyrqcVd+sv83pb43K1T4es8OAV8crQnUarbKW+uWaQETnTMy2En50oRwvoTwVJlbrxZZ+LQB' +
+    'WVv0flMRfawmUKujKnPiROeM5/wyB75dMdQtFe4bgNbde/8UIDuWagO1VsxQSvmJzrvLxKrrmxUfYZWrrzZ4/ZsW8EUoWyOotVdmtpa83x+fLZ9zacgAoaRZ' +
+    'aEfqTgZS7cmynGThH4aAL9trtVQNKzNda6kQa+ul0ir8ghtVWsuEwFOexbd+dwigr3ZQtaxibV0CBoKnAP7spqdoLaUWobKx2MngbuXMW8oNY1LB2kHVsor1' +
+    '9gbg0pwJ8JetRWtpqlg+26yOkr1TT5eAik4DfBmtB1RtK34Vt1S09ye389ZKvVDShrb5DoBz6AwQuFsA1aomM18cqwdUjeuQS2FpPpfyf1BcOyRfvgggt6vo' +
+    'K9VU7j413VTHarja1iHf1gDvrd8HyL6Y2wsgixvOAscuArTumtQ2l5XmW6cB/rpeUDXZKj3ohiELP3wVIH30XGn8uXNRAPQkhHz5opMBtN0WEMi6RO+ddoOh' +
+    'XK07dDbUcM3GKwtDT5hckQeVzxrf6JoqwlJtOocuiMAh1xpZ5fV8EjFxyJImeC/WvEC5FlstbCrLawDZN1XwRyipCKVMVmg44Bz+afk9oaWaUdXGK+9n5WON' +
+    'Pt41XtoZdk1qW28IoCe/CiCaPbIMVN9SzbSqCZUO+rJ13fp4V0M+XunxfTJ6xHcHkIV1hq0zgb8vD9b7RO2gavRgURcKJeQvvuVyS+oEdluuLmihhHJf4F9V' +
+    '3OWGOPJkDGpf+F4L23OmBd57WxR5s/95EqKwxasa0XcuCgvoyUzKE2MiA6Sas7thAjrlLwH4s0sCYHv8YapoWmVP7mq01gJB5ot9sCchCOx2Zw4KQ6NrnJ2q' +
+    'glP7noOa2N6o8tWbPa8CfF4ePuUJ9cyh7HKZdDfruaD2TvNwtV0ffxrg5scAT4wvy6llaPGMtnXRApyy6vCgAIjesAA5eObhsr04vrouUZ+1cD0YeuIbVn4c' +
+    '7JimJLhRE7iBLKWd5SHaCvjZHgBvgwlkt8iWlhZT1ROufWIVxsGCj1paWgznFeA3DwKqnr1L0RkAZ+cv4cv/9Nl99+sfqNlzgB1XSma7Uv4+q2DingvUddSx' +
+    'd2niMwDvlU3wtZvb9hXz4sZCIcFfEhgfs0BGxgAG6gRV146qxjkT0P9tGBhvKhH7oTztRwod4GhgRM1DAKGz/BZR0fSmAehvbgG95XoxQ/6rPB0KZ06+Ow2a' +
+    'AhWof9t6nXvitG6R18PQXGH8yBOrQKtWOwN75kW9ipCnap174rJXDYC7W+BaV0vBta7Z8rRKJb8O53wCkG11gCpQtf79g2rACe0+JfsKK+bcj+jN5JPlJ3/q' +
+    'CnrdO1ceFJULq/cd/uRnlZckRK4t5WXkwUA9yK7G250Av3qSH+37rEJNiNDUcy6o3syDgaopklkhXJ1BCzZm+v75pV+sLMpEp/qswAxA6yc84PFgXwRSoY3T' +
+    'N9oXWJ62pNu+/rEaZerdLLk+DxZCG+/4gcvLN/HIXb0fR7MAgw8OarmtzFqJICN3ACfzx2fLGR+5fj86A9UW1P5WPQhwIgY4fQtlC0t7J//0lzP1xwgPD5UK' +
+    'nJynv/NmSV2oZdAztn5Q6/mWxV0N8Nqe4sJS7XhHQpUU1gdqfV/l2ukW4QdH3ERUgRk4C48QFanjVomEu4FxaJJHiwrnZQtQizmUnq9Hph4GrwC8bxoAG3vU' +
+    'WkuQDwPUur/cklVp2M1hjqoY9GGAehjfoGtdAjyzdZVjf8u2Am7vAaQG9DwkUA8UMyw//rFT8bz3Ag/peChfBJrYagKhd3isUPHBGweyD0GmCsf/B112pENT' +
+    'Y0QNAAAAAElFTkSuQmCC'
+  };
+</script>
+
+</head>
+<body>
+  <header id="topbar">
+    <img id="logo" alt="W.E.S. Inc.">
+    <div class="title">Walker Electrical Services</div>
+    <div class="who"><span id="who"></span><span class="ver" id="appVer"></span></div>
+  </header>
+  <main id="app"><div class="loading">Loading&#x2026;</div></main>
+  <nav id="tabs" class="hidden">
+    <a href="#home" data-tab="home">Home</a>
+    <a href="#time" data-tab="time">Time</a>
+    <a href="#tools" data-tab="tools" id="toolsTab">Tools</a>
+    <a href="#more" data-tab="more">More</a>
+  </nav>
+  <div id="toast" class="toast hidden"></div>
+  <script src="config.js"></script>
+  <script src="js/timecore.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/remote.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/shell.js"></script>
+  <script>var URL_KEY = (window.WES_SHELL && WES_SHELL.urlKey) || '';</script>
+  <script>
+(function () {
+  'use strict';
+
+  /* ================= State ================= */
+  var S = {
+    key: '',
+    boot: null,       // apiBootstrap result
+    tc: null,         // my time card (current week)
+    homeDay: '',      // day picked on the Home week strip
+    homeWeek: '',     // ref date for the Home week strip
+    jobs: [],         // events shown in Home > Today's jobs (the popup opens one of these)
+    points: null,     // v0.7: my points summary (balance, lifetime, streak, this week); only ever my own
+    glowNext: ''      // v0.7: element to glow on the next Home render (after a save that earned points)
+  };
+  var LS = 'wes1.';
+  var app = document.getElementById('app');
+
+  /* ================= Utilities ================= */
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function toast(msg, ms) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.add('hidden'); }, ms || 3000);
+  }
+  function lsGet(k) { try { return localStorage.getItem(LS + k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { localStorage.setItem(LS + k, v); } catch (e) {} }
+  function lsDel(k) { try { localStorage.removeItem(LS + k); } catch (e) {} }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function nowHm() { var d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function toMin(hm) { var m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function time12(hm) {
+    var m = toMin(hm); if (m === null) return '';
+    var h = Math.floor(m / 60), mi = m % 60;
+    return (h % 12 === 0 ? 12 : h % 12) + ':' + pad2(mi) + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+  function fmtH(n) { return (n == null ? 0 : n).toFixed(2).replace(/\.?0+$/, '') + ' h'; }
+  function days(n) { return n === 1 ? '1 day' : n + ' days'; }
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function longDate(ds) {
+    var p = ds.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return DOW[d.getDay()] + ', ' + MON[+p[1] - 1] + ' ' + (+p[2]);
+  }
+  function hashParts() { return location.hash.replace(/^#/, '').split('/').map(decodeURIComponent); }
+  function go(h) { if (location.hash === h) route(); else location.hash = h; }
+  function errMsg(err) { return String(err && err.message || err).replace(/^Error:\s*/, '').replace(/^[A-Z_]+:\s*/, ''); }
+  function isMod() { return !!(S.boot && S.boot.user.isModerator); }
+
+  /** Promise wrapper around google.script.run; the personal key goes first on every call. */
+  function call(fn) {
+    var args = [S.key].concat(Array.prototype.slice.call(arguments, 1));
+    return new Promise(function (resolve, reject) {
+      if (!window.google || !google.script || !google.script.run) { reject(new Error('No connection')); return; }
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (err) {
+        reject(err instanceof Error ? err : new Error(String(err && err.message || err)));
+      });
+      r[fn].apply(r, args);
+    });
+  }
+  function fail(err) {
+    var m = String(err && err.message || err);
+    if (/(NOT_INVITED|BAD_LINK|INACTIVE):/.test(m)) { denied(m); return; }
+    toast(errMsg(err), 5000);
+  }
+
+  /* ================= Points feedback (v0.7) =================
+   * Fired only by the server's "earned" list, which only exists after a save succeeded. Chime + counter tick + glow,
+   * all under 1 second, no modal, nothing blocks. The page never adds points by itself. */
+  var audioCtx = null;
+  function muted() { return lsGet('mute') === '1'; }
+  /** Call synchronously inside the tap handler: iOS only allows sound that starts from a user gesture. */
+  function primeAudio() {
+    if (muted()) return;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+    } catch (e) { audioCtx = null; }
+  }
+  /** Two short sine notes (about 0.3 s), generated: no audio file. */
+  function chime() {
+    if (muted() || !audioCtx) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      [[880, 0], [1320, 0.12]].forEach(function (n) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t0 + n[1]);
+        g.gain.exponentialRampToValueAtTime(0.25, t0 + n[1] + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + 0.16);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t0 + n[1]); o.stop(t0 + n[1] + 0.18);
+      });
+    } catch (e) {}
+  }
+  function reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  function setPts(n) { $all('.ptsval').forEach(function (el) { el.textContent = n; }); }
+  /** Counts the points numbers up over about 0.6 s. */
+  function tickCounter(from, to) {
+    if (reducedMotion() || from === to || !window.requestAnimationFrame) { setPts(to); return; }
+    var t0 = null;
+    setPts(from);
+    function step(ts) {
+      if (t0 === null) t0 = ts;
+      var k = Math.min(1, (ts - t0) / 600);
+      setPts(Math.round(from + (to - from) * k));
+      if (k < 1) window.requestAnimationFrame(step);
+    }
+    window.requestAnimationFrame(step);
+  }
+  function glow(el) {
+    if (!el || reducedMotion()) return;
+    el.classList.remove('earned'); void el.offsetWidth; el.classList.add('earned');
+    setTimeout(function () { el.classList.remove('earned'); }, 800);
+  }
+  function plural(n, w) { return n + ' ' + w + (Math.abs(n) === 1 ? '' : 's'); }
+  /** The top-bar points counter (tap = My points). Hidden while points are off. */
+  function drawPill() {
+    var top = document.getElementById('topbar'), pill = document.getElementById('ptsPill');
+    var on = !!(S.points && S.points.enabled);
+    if (!on) { if (pill) pill.parentNode.removeChild(pill); return; }
+    if (!pill) {
+      pill = document.createElement('a');
+      pill.id = 'ptsPill'; pill.className = 'ptspill'; pill.href = '#points';
+      pill.setAttribute('aria-label', 'My points');
+      top.insertBefore(pill, top.querySelector('.who'));
+    }
+    pill.innerHTML = '<span class="ptsval">' + esc(S.points.balance) + '</span> pts';
+  }
+  /**
+   * Applies a save's points result. Returns the text for the toast ('' when nothing changed).
+   * glowSel: what to glow on the next Home render (the save itself navigates away from the tapped button).
+   */
+  function applyPoints(p, glowSel) {
+    if (!p || !p.summary) return '';
+    var before = S.points ? S.points.balance : 0;
+    S.points = p.summary;
+    drawPill();
+    var earned = p.earned || [], revoked = p.revoked || [], msg = '';
+    if (earned.length) {
+      var sum = 0;
+      earned.forEach(function (x) { sum += x.pts; });
+      var bonus = earned.filter(function (x) { return x.type === 'STREAK' || x.type === 'WEEK'; })
+        .map(function (x) { return x.label + ' +' + x.pts; });
+      msg = ' +' + plural(sum, 'point') + '!' + (bonus.length ? ' ' + bonus.join(', ') + '.' : '');
+      chime();
+      tickCounter(before, p.summary.balance);
+      glow(document.getElementById('ptsPill'));
+      S.glowNext = glowSel || '';
+    } else setPts(p.summary.balance);
+    if (revoked.length) {
+      var r = 0;
+      revoked.forEach(function (x) { r -= x.pts; });
+      msg += ' ' + plural(r, 'point') + ' taken back.';
+    }
+    if (p.credited && p.credited.length) msg += ' Slip point for ' + p.credited.join(', ') + '.';
+    return msg;
+  }
+
+  /* ================= Start ================= */
+  function start() {
+    var logo = document.getElementById('logo');
+    if (window.WES_LOGO) logo.src = WES_LOGO.emblemWhite;
+    S.key = (typeof URL_KEY === 'string' && URL_KEY) || lsGet('key');
+    if (typeof URL_KEY === 'string' && URL_KEY) lsSet('key', URL_KEY);
+    call('apiBootstrap').then(function (b) {
+      S.boot = b; S.tc = b.timeCard; S.homeDay = b.today; S.homeWeek = b.today; S.points = b.points || null;
+      document.getElementById('who').textContent = b.user.name;
+      drawPill();
+      document.getElementById('appVer').textContent = b.app.version;
+      document.getElementById('tabs').classList.remove('hidden');
+      window.addEventListener('hashchange', route);
+      route();
+    }).catch(function (err) {
+      var m = String(err && err.message || err);
+      if (/BAD_LINK:/.test(m) && !(typeof URL_KEY === 'string' && URL_KEY)) lsDel('key');
+      if (/(NOT_INVITED|BAD_LINK|INACTIVE):/.test(m)) denied(m);
+      else app.innerHTML = '<div class="card"><h2>Could not load</h2><p>' + esc(errMsg(err)) + '</p>' +
+        '<button class="btn primary block" id="retry">Try again</button></div>';
+      var r = $('#retry'); if (r) r.onclick = function () { location.reload(); };
+    });
+  }
+
+  /** The "Not invited" / "turned off" page. */
+  function denied(m) {
+    document.getElementById('tabs').classList.add('hidden');
+    var title = /INACTIVE:/.test(m) ? 'Access turned off' : /BAD_LINK:/.test(m) ? 'Link not valid' : 'Not invited';
+    app.innerHTML = '<div class="card denied">' +
+      (window.WES_LOGO ? '<img alt="Walker Electrical Services" src="' + WES_LOGO.wordmark + '">' : '') +
+      '<h1 id="deniedTitle">' + esc(title) + '</h1>' +
+      '<p>' + esc(errMsg(m)) + '</p>' +
+      '<p class="muted">This app is invite-only. Ask Doug or Duane to invite you. If you were invited, open the ' +
+      'link in your invite email on this phone (it signs you in).</p></div>';
+  }
+
+  /* ================= Router ================= */
+  function setTab(t) {
+    $all('nav#tabs a[data-tab]').forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-tab') === t); });
+  }
+  function route() {
+    if (!S.boot) return;
+    var p = hashParts(), page = p[0] || 'home';
+    window.scrollTo(0, 0);
+    var tab = { home: 'home', log: 'time', blk: 'time', time: 'time', week: 'time', timeoff: 'time', tools: 'tools', tool: 'tools' }[page] || 'more';
+    closeModal();
+    closePhoto();
+    setTab(tab);
+    if (page.indexOf('mod-') === 0 && !isMod()) { go('#home'); return; }
+    switch (page) {
+      case 'home': return renderHome();
+      case 'log': return renderLog(p[1], p[2]);
+      case 'blk': return renderBlock(p[1], p[2], p[3]);
+      case 'time': return renderTime();
+      case 'week': return renderWeek(p[1], p[2]);
+      case 'timeoff': return renderTimeOff();
+      case 'tools': return renderTools();
+      case 'tool': return renderToolPage(p[1], p[2], p[3]);
+      case 'more': return renderMore();
+      case 'points': return renderPoints();
+      case 'mod-points': return renderModPoints();
+      case 'mod-rewards': return renderModRewards();
+      case 'mod-users': return renderModUsers();
+      case 'mod-user': return renderModUser(p[1]);
+      case 'mod-time': return renderModTime(p[1]);
+      case 'mod-timeoff': return renderModTimeOff(p[1]);
+      case 'mod-settings': return renderModSettings();
+      default: go('#home');
+    }
+  }
+
+  /* ================= Shared pieces ================= */
+  /** v0.9: ONE total for today (all blocks summed), "Clocked in since X" while a block is open. */
+  function blockRange(b) { return b.startLabel + ' - ' + (b.open ? 'now' : b.endLabel); }
+  function todaySummary(tc) {
+    var bl = tc.todayBlocks || [], op = tc.openBlock;
+    var stale = op && op.date !== tc.today ? '<div class="note warn" id="openOld">Your block from ' + esc(op.dateLabel) + ' is still open. Add its end time.</div>' : '';
+    if (!bl.length) return '<div class="line"><div class="l"><span class="t" id="noTimeYet">No time logged today, tap to add</span></div></div>' + stale;
+    if (tc.todayDayType && tc.todayDayType !== 'Work') {
+      var e = bl[0];
+      return '<div class="line"><div class="l"><span class="t">' + esc(e.dayType) + ' day</span>' +
+        (e.start ? '<span class="s">' + esc(e.startLabel) + ' - ' + esc(e.endLabel) + '</span>' : '') + '</div>' +
+        '<span class="r"><span class="chip solid">' + esc(e.dayType) + '</span></span></div>';
+    }
+    var live = op && op.date === tc.today;
+    var title = live ? 'Clocked in since ' + op.startLabel : bl.length === 1 ? 'Logged in at ' + bl[0].startLabel : bl.length + ' blocks today';
+    return '<div class="line"><div class="l"><span class="t' + (live ? ' clockedin' : '') + '" id="todayTitle">' + esc(title) + '</span>' +
+      '<span class="s">' + esc(bl.map(blockRange).join(' \u00b7 ')) + '</span></div>' +
+      '<span class="r hours" id="todayHours">' + fmtH(tc.todayHours) + '</span></div>' + stale;
+  }
+  function chip(color) {
+    return '<span class="chip c-' + esc(color.key) + '" title="' + esc(color.name) + '">' + esc(color.label || color.name) + '</span>';
+  }
+  function jobsHtml(j) {
+    if (!j.ok) return '<p class="muted">' + esc(j.message) + '</p>';
+    if (!j.events.length) return '<p class="muted">No WES jobs on the calendar for ' + esc(j.dateLabel) + '.</p>';
+    return j.events.map(function (e, i) {
+      return '<div class="line job' + (e.isSlip ? ' slipentry' : '') + '" role="button" tabindex="0" data-i="' + i + '" aria-label="Open ' + esc(e.title) + '">' +
+        '<div class="l"><span class="t">' + esc(e.title) + '</span>' +
+        '<span class="s">' + esc(e.timeLabel) + (e.location ? ' &#183; ' + esc(e.location) : '') +
+          (e.isSlip ? ' &#183; completed slip' : e.slipDone ? ' &#183; slip on file' : '') + '</span></div>' +
+        '<span class="r row">' + chip(e.color) +
+        (e.navUrl ? ' <a class="btn small nav" target="_blank" rel="noopener" href="' + esc(e.navUrl) + '">Navigate</a>' : '') +
+        '<span class="tap" aria-hidden="true">&#8250;</span></span></div>';
+    }).join('');
+  }
+  function offLine(label, x) {
+    var right = x.allotted === null ? '<b>' + days(x.used) + '</b>' : '<b>' + x.used + ' of ' + x.allotted + ' used</b>';
+    var sub = x.allotted === null ? 'No limit set' : (x.remaining < 0 ? Math.abs(x.remaining) + ' over' : days(x.remaining) + ' left');
+    return '<div class="line"><div class="l"><span class="t">' + esc(label) + '</span><span class="s">' + esc(sub) + '</span></div>' +
+      '<span class="r">' + right + (x.over ? ' <span class="chip warn">Over</span>' : '') + '</span></div>';
+  }
+
+  /* ================= Home ================= */
+  function renderHome() {
+    var b = S.boot, tc = S.tc, first = b.user.name.split(' ')[0];
+    var hr = new Date().getHours();
+    var hello = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+    app.innerHTML =
+      '<h1 id="hello">' + esc(hello) + ', ' + esc(first) + '</h1><p class="sub">' + esc(longDate(tc.today)) + '</p>' +
+      // v0.8: today's time card first, then today's jobs, then the week strip. No point tiles: the top-bar counter is enough.
+      // v0.6: no Log time button. Today's time card always shows and the whole card opens Log time (logging or editing).
+      '<div class="card tapcard" id="timeCard" role="button" tabindex="0" aria-label="' +
+        (tc.todayEntry ? 'Edit today\'s time' : 'Log today\'s time') + '"><div class="card-head"><h3>Today\'s time card</h3>' +
+        '<span class="row">' + (tc.todayEntry ? '<span class="chip">' + esc(tc.todayDayType) + '</span>' : '') +
+        '<span class="tap" aria-hidden="true">&#8250;</span></span></div>' + todaySummary(tc) +
+        '<div id="streakRisk"></div>' +
+        '<p class="muted small" style="margin:4px 0 0">' + (tc.todayEntry ? 'Tap to edit today\'s time' : 'Tap to log today\'s time') + '</p></div>' +
+      '<div class="card"><div class="card-head"><h3 id="jobsHead">Today\'s jobs</h3><span class="muted small">WES calendar</span></div>' +
+        '<div id="jobs"><div class="loading">Loading jobs&#x2026;</div></div>' +
+        '<p class="muted small">Tap a job for its notes, finish list and the completed slip. New jobs: Tools &gt; Work order generator. Any-time work: Tools &gt; Odds and Ends.</p></div>' +
+      '<div class="card"><div class="card-head"><button class="btn small" id="wkPrev" aria-label="Previous week">&#8249;</button>' +
+        '<h3 id="wkLabel">This week</h3><button class="btn small" id="wkNext" aria-label="Next week">&#8250;</button></div>' +
+        '<div id="weekStrip"><div class="loading">Loading&#x2026;</div></div>' +
+        '<p class="muted small">Tap a day to see its jobs.</p></div>';
+    var tcEl = $('#timeCard');
+    tcEl.onclick = function () { go('#log/' + tc.today); };
+    tcEl.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go('#log/' + tc.today); } };
+    app.insertAdjacentHTML('beforeend', '<p class="muted small ver" id="homeVer">' + esc(S.boot.app.name) + ' ' + esc(S.boot.app.version) + '</p>');
+    drawRisk();
+    if (S.glowNext) { var g = S.glowNext; S.glowNext = ''; setTimeout(function () { glow($(g)); }, 30); }
+    loadJobs(S.homeDay);
+    loadWeekStrip();
+    // fresh numbers (a crew mate's slip may have earned me a point); my own only
+    if (S.points) call('apiPoints').then(function (p) { S.points = p; drawPill(); if ($('#streakRisk')) drawRisk(); }).catch(function () {});
+  }
+  /** v0.8: the only points text on Home is the end-of-day "streak at risk" note inside the time card. */
+  function drawRisk() {
+    var P = S.points && S.points.enabled ? S.points : null, el = $('#streakRisk');
+    if (!el) return;
+    el.innerHTML = P && P.streak.atRisk ? '<div class="note warn" id="streakAtRisk">Your ' + esc(P.streak.count) +
+      '-day streak is at risk. Log today\'s time before midnight to keep it.</div>' : '';
+  }
+  function loadJobs(ds) {
+    call('apiJobs', ds).then(function (j) {
+      var el = $('#jobs'); if (!el) return;
+      $('#jobsHead').textContent = ds === S.boot.today ? 'Today\'s jobs' : 'Jobs ' + j.dateLabel;
+      S.jobs = j.ok ? j.events : [];
+      el.innerHTML = jobsHtml(j);
+      wireJobs(el);
+    }).catch(function (err) { var el = $('#jobs'); if (el) el.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
+  function loadWeekStrip() {
+    call('apiWeekStrip', S.homeWeek).then(function (w) {
+      var el = $('#weekStrip'); if (!el) return;
+      $('#wkLabel').textContent = w.isCurrent ? 'This week' : w.label;
+      el.innerHTML = '<div class="week">' + w.days.map(function (d) {
+        return '<button class="d' + (d.isToday ? ' today' : '') + (d.date === S.homeDay ? ' sel' : '') + '" data-date="' + esc(d.date) + '">' +
+          '<span class="dw">' + esc(d.dow) + '</span><span class="dn">' + d.dayNum + '</span>' +
+          '<span class="hrs">' + (d.hours != null ? (d.dayType === 'Work' ? fmtH(d.hours) : esc(d.dayType)) : '&nbsp;') + '</span>' +
+          '<span class="jobs">' + (d.jobCount ? d.jobCount + (d.jobCount === 1 ? ' job' : ' jobs') : '&nbsp;') + '</span></button>';
+      }).join('') + '</div>' + (w.calendarOk ? '' : '<p class="muted small">Calendar unavailable; showing hours only.</p>');
+      $all('.week .d', el).forEach(function (btn) {
+        btn.onclick = function () {
+          S.homeDay = btn.getAttribute('data-date');
+          $all('.week .d', el).forEach(function (x) { x.classList.toggle('sel', x === btn); });
+          $('#jobs').innerHTML = '<div class="loading">Loading jobs&#x2026;</div>';
+          loadJobs(S.homeDay);
+        };
+      });
+      $('#wkPrev').onclick = function () { S.homeWeek = w.prev; loadWeekStrip(); };
+      $('#wkNext').onclick = function () { S.homeWeek = w.next; loadWeekStrip(); };
+    }).catch(fail);
+  }
+
+  /* ================= Job popup (tap a job) ================= */
+  /** Whole row opens the popup; the Navigate link inside it just navigates. */
+  function wireJobs(el) {
+    $all('.line.job', el).forEach(function (row) {
+      row.addEventListener('click', function (ev) {
+        if (ev.target.closest && ev.target.closest('a')) return; // Navigate: let the link work, no popup
+        openJob(S.jobs[+row.getAttribute('data-i')]);
+      });
+      row.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openJob(S.jobs[+row.getAttribute('data-i')]); }
+      });
+    });
+  }
+
+  var modalEl = null, modalKeyHandler = null;
+  function openModal(html) {
+    closeModal();
+    modalEl = document.createElement('div');
+    modalEl.className = 'modal-back';
+    modalEl.id = 'modalBack';
+    modalEl.innerHTML = '<div class="modal" id="modal" role="dialog" aria-modal="true">' + html + '</div>';
+    modalEl.addEventListener('click', function (ev) { if (ev.target === modalEl) closeModal(); });
+    document.body.appendChild(modalEl);
+    document.body.style.overflow = 'hidden';
+    modalKeyHandler = function (ev) { if (ev.key === 'Escape' || ev.key === 'Esc') closeModal(); };
+    document.addEventListener('keydown', modalKeyHandler);
+    return modalEl;
+  }
+  function setModal(html) { if (modalEl) $('#modal', modalEl).innerHTML = html; wireClose(); }
+  function wireClose() { if (modalEl) $all('.xbtn', modalEl).forEach(function (b) { b.onclick = closeModal; }); }
+  function closeModal() {
+    if (modalKeyHandler) document.removeEventListener('keydown', modalKeyHandler);
+    modalKeyHandler = null;
+    if (modalEl && modalEl.parentNode) modalEl.parentNode.removeChild(modalEl);
+    modalEl = null;
+    document.body.style.overflow = '';
+  }
+  function modalHead(title) {
+    return '<div class="modal-head"><h2 id="modalTitle">' + esc(title) + '</h2><button type="button" class="xbtn" id="modalX" aria-label="Close">&#215;</button></div>';
+  }
+
+  function jobInfoHtml(e) {
+    return '<p class="sub" style="margin:0 0 8px">' + esc(e.timeLabel) + ' &#183; ' + esc(e.date ? longDate(e.date) : '') + '</p>' +
+      '<div class="row" style="margin-bottom:8px">' + chip(e.color) + '</div>' +
+      (e.location ? '<div class="spread" style="margin:8px 0"><span class="small" id="jobLoc">' + esc(e.location) + '</span>' +
+        (e.navUrl ? '<a class="btn small" id="jobNav" target="_blank" rel="noopener" href="' + esc(e.navUrl) + '">Navigate</a>' : '') + '</div>' : '');
+  }
+
+  /** Opens the popup for a job known only by its event id and date (work orders, photos). */
+  function openJobRef(eventId, date) {
+    call('apiJobDetail', eventId, date).then(function (d) { openJob(d.event, d); }).catch(fail);
+  }
+
+  function finishJobHtml(f) {
+    if (!f) return '<p class="muted small">Finish lists are not available right now.</p>';
+    var ls = f.linked.map(function (l) { return [l, true]; }).concat(f.suggested.map(function (l) { return [l, false]; }));
+    if (!ls.length) {
+      return '<p class="muted small" id="jobNoFinish">No finish list for ' + esc(f.customerGuess || 'this customer') + ' yet.</p>' +
+        '<button type="button" class="btn small" id="jobStartList">Start a finish list</button>';
+    }
+    return ls.map(function (x) {
+      var l = x[0], open = l.items.filter(function (i) { return !i.done; });
+      return '<div class="fjob" data-list="' + esc(l.id) + '"><div class="spread"><b>' + esc(l.name) + '</b>' + finishChip(l) + '</div>' +
+        '<div class="muted small">' + finishSub(l) + (x[1] ? '' : ' &#183; same customer') + '</div>' +
+        (open.length ? '<ul class="flist">' + open.slice(0, 6).map(function (i) { return '<li>' + esc(i.description) + '</li>'; }).join('') +
+          (open.length > 6 ? '<li class="muted">+' + (open.length - 6) + ' more</li>' : '') + '</ul>' : '') +
+        '<div class="row"><a class="btn small" href="#tool/finish/' + esc(l.id) + '">Open list</a>' +
+        (x[1] ? '' : '<button type="button" class="btn small flink" data-list="' + esc(l.id) + '">Link to this job</button>') + '</div></div>';
+    }).join('');
+  }
+
+  function openJob(e, pre) {
+    if (!e) return;
+    openModal(modalHead(e.title) + jobInfoHtml(e) +
+      '<div id="jobWo"></div>' +
+      '<h3 style="margin:12px 0 4px">Description</h3><div id="jobDesc"><div class="loading">Loading&#x2026;</div></div>' +
+      '<div id="jobSlip"></div>' +
+      '<div id="jobPhotos"></div>' +
+      '<h3 style="margin:12px 0 4px">Finish list</h3><div id="jobFinish"><div class="loading">Loading&#x2026;</div></div>' +
+      '<button type="button" class="btn primary big" id="slipBtn" style="margin-top:12px">Create completed slip</button>');
+    wireClose();
+    var detail = null;
+    $('#slipBtn').onclick = function () { openSlipForm(e, detail); };
+    function apply(d) {
+      if (!modalEl || !$('#jobDesc')) return;
+      detail = d;
+      if (d.isSlip) {
+        // A slip entry (its own calendar event): show the slip, no new slip, link back to the scheduled job.
+        $('#jobDesc').innerHTML = '<p class="muted" id="slipEntryNote">This is a completed slip, kept as its own calendar entry next to the scheduled job.</p>';
+        $('#jobSlip').innerHTML = '<h3 style="margin:12px 0 4px">Slip</h3><div class="slipfile" id="slipOnFile">' + esc(d.slipOnFile) + '</div>';
+        var jf = $('#jobFinish'); if (jf) { jf.previousSibling.style.display = 'none'; jf.innerHTML = ''; }
+        var sb = $('#slipBtn');
+        if (d.slipFor) { sb.textContent = 'Open the scheduled job'; sb.classList.remove('primary'); sb.onclick = function () { openJobRef(d.slipFor, e.date); }; }
+        else if (d.oddsFor) { sb.textContent = 'Open in Odds and Ends'; sb.classList.remove('primary'); sb.onclick = function () { closeModal(); go('#tool/odds/' + d.oddsFor); }; }
+        else sb.parentNode.removeChild(sb);
+        return;
+      }
+      $('#jobDesc').innerHTML = d.description ? '<div class="desc" id="jobDescText">' + esc(d.description) + '</div>'
+                                              : '<p class="muted" id="jobDescText">No description on this calendar event.</p>';
+      if (d.slipOnFile) {
+        $('#jobSlip').innerHTML = '<h3 style="margin:12px 0 4px">Slip on file</h3><div class="slipfile" id="slipOnFile">' + esc(d.slipOnFile) + '</div>';
+        $('#slipBtn').textContent = 'Replace completed slip';
+      }
+      if (d.workOrder) {
+        $('#jobWo').innerHTML = '<a class="drill" id="jobWoLink" href="#tool/workorders/' + esc(d.workOrder.id) + '"><span>Work order ' + esc(d.workOrder.id) +
+          '</span><span class="val">' + esc(d.workOrder.techNames.join(', ')) + '</span></a>';
+      }
+      // Read-only: photos are added only in the Picture gallery. A small link when this job has some.
+      d.photos = d.photos || [];
+      if (d.photos.length) {
+        var jn = d.photos[0].jobName;
+        $('#jobPhotos').innerHTML = '<a class="drill" id="jobPhotoLink" href="#tool/gallery"><span>Photos (' + d.photos.length + ')</span><span class="val">Open in Gallery</span></a>';
+        $('#jobPhotoLink').onclick = function () { S.galleryQ = jn; S.galleryBy = 'job'; closeModal(); };
+      }
+      $('#jobFinish').innerHTML = finishJobHtml(d.finish);
+      var st = $('#jobStartList');
+      if (st) st.onclick = function () {
+        S.finishPrefill = { customer: d.finish.customerGuess, address: d.finish.address || e.location || '', eventId: e.id, date: e.date };
+        go('#tool/finish/new');
+      };
+      $all('#jobFinish .flink').forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          call('apiFinishLink', b.getAttribute('data-list'), e.id, e.date).then(function (r) {
+            toast(r.warning || 'Linked. This list now shows on this job.', r.warning ? 6000 : 3000);
+            openJobRef(e.id, e.date);
+          }).catch(function (err) { b.disabled = false; fail(err); });
+        };
+      });
+    }
+    if (pre) { apply(pre); return; }
+    call('apiJobDetail', e.id, e.date).then(apply).catch(function (err) {
+      if ($('#jobDesc')) $('#jobDesc').innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>';
+      ['#jobPhotos', '#jobFinish'].forEach(function (s) { if ($(s)) $(s).innerHTML = ''; });
+    });
+  }
+
+  /** v0.7 crew picker: a helper who is not in the app (name + tier + hours; no points). */
+  function extraRow(x) {
+    x = x || {};
+    return '<div class="xrow"><input type="text" class="xn" maxlength="40" placeholder="Name" value="' + esc(x.name || '') + '">' +
+      '<select class="xt" aria-label="Tier">' + ['Helper', 'Licensed', 'Master'].map(function (t) {
+        return '<option' + (t === (x.tier || 'Helper') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+      '<input type="number" class="xh" min="0" max="24" step="0.25" inputmode="decimal" placeholder="Hours" value="' + esc(x.hours || '') + '">' +
+      '<button type="button" class="btn small rm" aria-label="Remove helper">&#215;</button></div>';
+  }
+  function crewHtml(prev) {
+    var opts = (S.boot && S.boot.crewOptions) || [], me = S.boot.user.email, had = {};
+    var prevCrew = prev && prev.crew ? prev.crew : [];
+    prevCrew.forEach(function (c) { if (c.email) had[c.email] = c; });
+    var extras = prevCrew.filter(function (c) { return !c.email; });
+    var legacy = prev && !prevCrew.length && prev.labor && prev.labor.length;
+    return '<label class="field">Crew on this job</label>' +
+      '<p class="muted small" style="margin:0 0 6px">Tick everyone who worked this job and enter their hours. Everyone on the crew gets the slip point.</p>' +
+      (legacy ? '<div class="note" id="oldLabor">Saved before crews: ' + esc(prev.labor.map(function (l) { return l.tier + ' x' + l.count + ' | ' + l.hours + ' h'; }).join('; ')) +
+        '. Pick the crew to replace it.</div>' : '') +
+      '<div id="crew">' + opts.map(function (o) {
+        var c = had[o.email], on = !!c || (!prev && o.email === me);
+        return '<div class="crewrow' + (on ? ' on' : '') + '" data-email="' + esc(o.email) + '">' +
+          '<label class="cc"><input type="checkbox" class="ccb"' + (on ? ' checked' : '') + '><span><span class="t">' + esc(o.name) + '</span>' +
+          '<span class="s">' + esc(o.tier || 'no tier set') + '</span></span></label>' +
+          '<input type="number" class="ch" min="0" max="24" step="0.25" inputmode="decimal" placeholder="Hours" aria-label="Hours for ' + esc(o.name) + '" value="' +
+          esc(c ? c.hours : '') + '"></div>';
+      }).join('') + '</div>' +
+      '<div id="crewExtra">' + extras.map(extraRow).join('') + '</div>' +
+      '<button type="button" class="btn small" id="addExtra">+ Helper not in the app</button>';
+  }
+  function matRow(m) {
+    m = m || {};
+    return '<div class="mat"><input type="number" class="mq" min="0" step="any" inputmode="decimal" placeholder="Qty" value="' + esc(m.qty == null ? '' : m.qty) + '">' +
+      '<input type="text" class="mi" maxlength="120" placeholder="Item" value="' + esc(m.item || '') + '">' +
+      '<button type="button" class="btn small rm" aria-label="Remove line">&#215;</button></div>';
+  }
+  /**
+   * The completed slip form. odd (v0.8): an Odds and Ends item instead of a calendar job: the form asks for the day the
+   * work was done, has no finish-list part, and saves through apiOddSlip (which makes the SLIP calendar entry).
+   */
+  function openSlipForm(e, detail, odd) {
+    var prev = detail && detail.slip;
+    var finish = detail && detail.finish, fl = finish ? (finish.linked[0] || finish.suggested[0] || null) : null;
+    var openItems = fl ? fl.items.filter(function (i) { return !i.done; }) : [];
+    var html = modalHead('Completed slip') +
+      (odd ? '<p class="sub" style="margin:0 0 6px" id="slipOddTitle">' + esc(odd.title) + ' &#183; Odds and Ends</p>' +
+        '<label class="field" for="sDate">Day the work was done</label><input type="date" id="sDate" max="' + esc(S.boot.today) + '" value="' + esc(S.boot.today) + '">'
+        : '<p class="sub" style="margin:0 0 6px">' + esc(e.title) + ' &#183; ' + esc(e.date ? longDate(e.date) : '') + '</p>') +
+      (prev || (detail && detail.slipOnFile) ? '<div class="note warn" id="replaceNote">This job already has a slip. Submitting replaces it, and the change is logged.</div>' : '') +
+      '<form id="slipForm" autocomplete="off">' +
+      '<label class="field" for="sWork">Work performed</label>' +
+      '<textarea id="sWork" maxlength="4000" rows="5" placeholder="What did you do? Tap the mic on your keyboard to talk instead of type.">' + esc(prev ? prev.workPerformed : '') + '</textarea>' +
+      crewHtml(prev) +
+      '<label class="toggle" for="sSC"><span>Service call (SC)</span><input type="checkbox" id="sSC"' + (prev && prev.sc ? ' checked' : '') + '></label>' +
+      '<label class="field">Materials</label><div id="mats">' +
+      ((prev && prev.materials.length ? prev.materials : [{}]).map(matRow).join('')) + '</div>' +
+      '<button type="button" class="btn small" id="addMat">+ Add material</button>' +
+      '<label class="toggle" for="sBill"><span>Billable</span><input type="checkbox" id="sBill"' + (prev && !prev.billable ? '' : ' checked') + '></label>' +
+      (odd ? '<label class="field" for="sFinish">Still to do (optional)</label>' +
+        '<textarea id="sFinish" maxlength="2000" rows="3" placeholder="Anything left, and materials needed"></textarea>' +
+        '<p class="muted small">Submitting puts this slip on the WES calendar for that day (Slip Complete) and moves the item to Done.</p>' : '') +
+      (odd ? '' : '<label class="field">Finish list (work still to do)</label>' +
+      (fl && openItems.length ? '<div class="muted small">Tick what got finished today on ' + esc(fl.name) + ':</div><div id="slipFinishOpen">' +
+        openItems.map(function (i) {
+          return '<label class="check"><input type="checkbox" class="sfdone" value="' + esc(i.id) + '"><span><span class="t">' + esc(i.description) + '</span>' +
+            (i.materials ? '<span class="s">Materials: ' + esc(i.materials) + '</span>' : '') + '</span></label>';
+        }).join('') + '</div>' : '') +
+      '<label class="field" for="sFinish" style="margin-top:8px">New items still to do, one per line (optional)</label>' +
+      '<textarea id="sFinish" maxlength="2000" rows="3" placeholder="Work still to do, and materials needed">' + esc(prev ? prev.finishNotes : '') + '</textarea>' +
+      '<label class="toggle" for="sFinishAdd"><span id="sFinishAddLabel">' + (fl ? 'Add new items to the finish list: ' + esc(fl.name)
+        : 'Start a finish list for ' + esc(finish && finish.customerGuess ? finish.customerGuess : 'this customer') + ' with these items') +
+        '</span><input type="checkbox" id="sFinishAdd" checked></label>') +
+      '<p class="muted small">No prices, no signature. Never put door, alarm or gate codes, WiFi passwords or key locations on a slip.</p>' +
+      '<button type="submit" class="btn primary big" id="slipSubmit">Submit slip</button>' +
+      '<button type="button" class="btn block" id="slipBack" style="margin-top:8px">Back</button>' +
+      '</form>';
+    if (!modalEl) openModal(html); else setModal(html);
+    wireClose();
+    function wireMats() { $all('#mats .rm').forEach(function (b) { b.onclick = function () { b.parentNode.parentNode.removeChild(b.parentNode); }; }); }
+    wireMats();
+    function wireCrew() {
+      $all('#crew .crewrow').forEach(function (row) {
+        var cb = $('.ccb', row), h = $('.ch', row);
+        cb.onchange = function () { row.classList.toggle('on', cb.checked); if (cb.checked && !h.value) h.focus(); };
+        h.oninput = function () { if (h.value && !cb.checked) { cb.checked = true; row.classList.add('on'); } };
+      });
+      $all('#crewExtra .rm').forEach(function (b) { b.onclick = function () { b.parentNode.parentNode.removeChild(b.parentNode); }; });
+    }
+    wireCrew();
+    $('#addExtra').onclick = function () {
+      var div = document.createElement('div'); div.innerHTML = extraRow({});
+      $('#crewExtra').appendChild(div.firstChild); wireCrew();
+      var n = $all('#crewExtra .xn'); n[n.length - 1].focus();
+    };
+    $('#addMat').onclick = function () {
+      var div = document.createElement('div'); div.innerHTML = matRow({});
+      $('#mats').appendChild(div.firstChild); wireMats();
+      var q = $all('#mats .mq'); q[q.length - 1].focus();
+    };
+    $('#slipBack').onclick = function () { if (odd) closeModal(); else openJob(e); };
+    $('#slipForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      primeAudio(); // in the tap itself, so the chime may play when the server says a point was earned
+      var crew = [], missing = '';
+      $all('#crew .crewrow').forEach(function (row) {
+        if (!$('.ccb', row).checked) return;
+        var h = $('.ch', row).value;
+        if (!(Number(h) > 0) && !missing) missing = $('.t', row).textContent.split(' ')[0];
+        crew.push({ email: row.getAttribute('data-email'), hours: h });
+      });
+      var extraCrew = $all('#crewExtra .xrow').map(function (x) { return { name: $('.xn', x).value, tier: $('.xt', x).value, hours: $('.xh', x).value }; })
+        .filter(function (x) { return x.name.trim() || x.hours; });
+      var input = {
+        eventId: e.id, date: e.date, workPerformed: $('#sWork').value, crew: crew, extraCrew: extraCrew, sc: $('#sSC').checked,
+        materials: $all('#mats .mat').map(function (m) { return { qty: $('.mq', m).value, item: $('.mi', m).value }; }),
+        billable: $('#sBill').checked, finishNotes: $('#sFinish').value
+      };
+      if (input.workPerformed.trim().length < 3) { toast('Please describe the work performed.', 4000); $('#sWork').focus(); return; }
+      if (!crew.length && !extraCrew.length) { toast('Pick who was on the job and enter their hours.', 4000); return; }
+      if (missing) { toast('Enter ' + missing + '\'s hours on the job.', 4000); return; }
+      if (odd) {
+        input.eventId = ''; input.date = $('#sDate').value;
+        if (!input.date) { toast('Pick the day the work was done.', 4000); $('#sDate').focus(); return; }
+        if (input.date > S.boot.today) { toast('The slip date can\'t be in the future.', 4000); $('#sDate').focus(); return; }
+      }
+      var btn = $('#slipSubmit'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      if (odd) {
+        call('apiOddSlip', odd.id, input).then(function (r) {
+          closeModal();
+          toast('Slip saved. Added to the calendar for ' + longDate(input.date) + ' (' + (r.color.label || r.color.name) + '). Moved to Done.' +
+            applyPoints(r.points, ''), 5000);
+          go('#tool/odds/' + odd.id);
+        }).catch(function (err) { btn.disabled = false; btn.textContent = 'Submit slip'; fail(err); });
+        return;
+      }
+      var doneIds = $all('#slipFinishOpen .sfdone:checked').map(function (c) { return c.value; });
+      var newItems = $('#sFinishAdd').checked ? lines(input.finishNotes) : [];
+      call('apiSubmitSlip', input).then(function (r) {
+        var msg = (r.replaced ? 'Slip replaced. ' : 'Slip saved. ') + 'Added to the calendar as its own entry (' + (r.color.label || r.color.name) + ').' +
+          (r.warning ? ' ' + r.warning : '') + applyPoints(r.points, '');
+        if (!doneIds.length && !newItems.length) return msg;
+        // Finish list: tick today's items and add the new ones (a failure here never undoes the saved slip)
+        return call('apiFinishFromSlip', { eventId: e.id, date: e.date, listId: fl ? fl.id : '', customer: finish ? finish.customerGuess : '',
+                                           address: e.location || '', doneItemIds: doneIds, newItems: newItems }).then(function (f) {
+          var bits = [];
+          if (f.done) bits.push(f.done + ' ticked off');
+          if (f.added) bits.push(f.added + ' added');
+          return msg + (bits.length ? ' Finish list: ' + bits.join(', ') + '.' : '') + (f.warning ? ' ' + f.warning : '');
+        }, function (err) { return msg + ' Finish list NOT updated: ' + errMsg(err); });
+      }).then(function (msg) {
+        closeModal();
+        toast(msg, 5000);
+        if ($('#jobs')) loadJobs(S.homeDay);
+      }).catch(function (err) { btn.disabled = false; btn.textContent = 'Submit slip'; fail(err); });
+    };
+  }
+
+  /* ================= Tools dashboard ================= */
+  var ICONS = {
+    workorder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v3H9z"/><path d="M8 11h8M8 15h8M8 19h5"/></svg>',
+    generator: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M13 9l-3 5h4l-3 5"/><path d="M6 19v2M18 19v2"/></svg>',
+    gallery: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-8 7"/></svg>',
+    odds: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="20" height="12" rx="2"/><path d="M8 8V5h8v3"/><path d="M2 13h20M10 13v2h4v-2"/></svg>',
+    finish: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l2 2 3-3M4 13l2 2 3-3M4 20l2 2 3-3"/><path d="M12 6h8M12 13h8M12 20h8"/></svg>'
+  };
+  /**
+   * The Tools page is built from this one list: a new tool is one more entry (plus an icon in ICONS).
+   * action types:
+   *   {type:'page', render: fn(a, b)}  an in-app screen at #tool/<id>[/a[/b]]; render draws it into #app
+   *   {type:'link', url: fn}           opens another app in a new tab
+   *   {type:'soon', detail}            a "Coming soon" placeholder
+   */
+  var TOOLS = [
+    { id: 'workorders', title: 'Work order generator', subtitle: 'Write up a job and put it on the WES calendar', icon: 'workorder',
+      action: { type: 'page', render: function (a, b) { renderWorkOrders(a, b); } } },
+    { id: 'generators', title: 'Generator Service app', subtitle: 'Loops, services and generator records', icon: 'generator',
+      action: { type: 'link', url: function () { return S.boot.app.generatorAppUrl; } } },
+    { id: 'gallery', title: 'Picture gallery', subtitle: 'Add job photos; browse by job name or date', icon: 'gallery',
+      action: { type: 'page', render: function () { renderGallery(); } } },
+    { id: 'finish', title: 'Finish lists', subtitle: 'Work still to do on each project', icon: 'finish',
+      action: { type: 'page', render: function (a) { renderFinish(a); } } },
+    { id: 'odds', title: 'Odds and Ends', subtitle: 'Unscheduled and any-time jobs: write a slip or schedule it', icon: 'odds',
+      action: { type: 'page', render: function (a, b) { renderOdds(a, b); } } }
+  ];
+  function toolTile(t) {
+    var a = t.action, inner = ICONS[t.icon] + '<span class="tt">' + esc(t.title) + '</span><span class="ts">' + esc(t.subtitle) + '</span>';
+    if (a.type === 'link') {
+      return '<a class="tile" data-tool="' + esc(t.id) + '" target="_blank" rel="noopener" href="' + esc(a.url()) + '">' + inner + '</a>';
+    }
+    if (a.type === 'page') return '<a class="tile" data-tool="' + esc(t.id) + '" href="#tool/' + esc(t.id) + '">' + inner + '</a>';
+    return '<a class="tile soon" data-tool="' + esc(t.id) + '" href="#tool/' + esc(t.id) + '"><span class="badge">Coming soon</span>' + inner + '</a>';
+  }
+  function renderTools() {
+    app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
+      '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
+      '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
+  }
+  function renderToolPage(id, a, b) {
+    var t = TOOLS.filter(function (x) { return x.id === id; })[0];
+    if (!t) { go('#tools'); return; }
+    if (t.action.type === 'link') { go('#tools'); return; }
+    if (t.action.type === 'page') { t.action.render(a, b); return; }
+    app.innerHTML = '<div class="card placeholder" id="toolPlaceholder">' + ICONS[t.icon] + '<h2>' + esc(t.title) + '</h2>' +
+      '<span class="chip solid">Coming soon</span><p class="muted">' + esc(t.action.detail) + '</p></div>' +
+      '<a class="btn block" href="#tools">Back to Tools</a>';
+  }
+  function backLink(href, label) { return '<a class="back" href="' + esc(href) + '">&#8249; ' + esc(label) + '</a>'; }
+  function loading() { app.innerHTML = '<div class="loading">Loading&#x2026;</div>'; }
+  function navBtn(url, id) {
+    return url ? '<a class="btn small nav"' + (id ? ' id="' + id + '"' : '') + ' target="_blank" rel="noopener" href="' + esc(url) + '">Navigate</a>' : '';
+  }
+  function lines(text) { return String(text || '').split('\n').map(function (l) { return l.trim(); }).filter(String); }
+
+  /* ================= Work order generator ================= */
+  function renderWorkOrders(sub, mode) {
+    if (sub === 'new') return drawWoForm(null);
+    if (sub && mode === 'edit') {
+      loading();
+      return call('apiWorkOrder', sub).then(function (r) { S.techs = r.techs; drawWoForm(r.workOrder); }).catch(fail);
+    }
+    if (sub) return renderWorkOrder(sub);
+    loading();
+    call('apiWorkOrders').then(function (r) {
+      S.techs = r.techs;
+      function woLine(w) {
+        return '<div class="line wo"><a class="l" href="#tool/workorders/' + esc(w.id) + '"><span class="t">' + esc(w.customer) + '</span>' +
+          '<span class="s">' + esc(w.dateLabel) + ' &#183; ' + esc(w.timeLabel) + (w.techNames.length ? ' &#183; ' + esc(w.techNames.join(', ')) : '') + '</span>' +
+          (w.address ? '<span class="s">' + esc(w.address) + '</span>' : '') + '</a>' +
+          '<span class="r">' + navBtn(w.navUrl) + '</span></div>';
+      }
+      app.innerHTML = backLink('#tools', 'Tools') + '<h1>Work orders</h1><p class="sub">Each one goes on the WES calendar as a Scheduled job</p>' +
+        '<a class="btn primary big" id="newWo" href="#tool/workorders/new">+ New work order</a>' +
+        '<div class="card" style="margin-top:12px"><h3>Upcoming</h3><div id="woUpcoming">' +
+          (r.upcoming.length ? r.upcoming.map(woLine).join('') : '<p class="muted">No upcoming work orders.</p>') + '</div></div>' +
+        '<div class="card"><h3>Last 60 days</h3><div id="woRecent">' +
+          (r.recent.length ? r.recent.map(woLine).join('') : '<p class="muted">None yet.</p>') + '</div></div>';
+    }).catch(fail);
+  }
+
+  function renderWorkOrder(id) {
+    loading();
+    call('apiWorkOrder', id).then(function (r) {
+      var w = r.workOrder, me = S.boot.user;
+      S.techs = r.techs;
+      var canEdit = me.isModerator || w.createdBy === me.email;
+      app.innerHTML = backLink('#tool/workorders', 'Work orders') +
+        '<h1 id="woTitle">' + esc(w.customer) + '</h1><p class="sub">' + esc(w.id) + ' &#183; ' + esc(w.dateLabel) + ' &#183; ' + esc(w.timeLabel) + '</p>' +
+        '<div class="card">' +
+          (w.address ? '<div class="spread"><span id="woAddr">' + esc(w.address) + '</span>' + navBtn(w.navUrl, 'woNav') + '</div>' : '<p class="muted">No address.</p>') +
+          (w.contactName || w.contactPhone ? '<div class="line"><div class="l"><span class="t">Contact</span><span class="s">' + esc(w.contactName || w.customer) +
+            '</span></div>' + (w.contactPhone ? '<a class="btn small" href="tel:' + esc(w.contactPhone.replace(/[^0-9+]/g, '')) + '">' + esc(w.contactPhone) + '</a>' : '') + '</div>' : '') +
+          '<div class="line"><div class="l"><span class="t">Techs</span><span class="s">' + esc(w.techNames.length ? w.techNames.join(', ') : 'Not assigned') + '</span></div></div>' +
+        '</div>' +
+        '<div class="card"><h3>Job description</h3><div class="desc" id="woDescText">' + esc(w.description) + '</div>' +
+          (w.notes ? '<h3>Notes</h3><div class="desc">' + esc(w.notes) + '</div>' : '') +
+          '<p class="muted small">Written by ' + esc(w.createdBy) + ' ' + esc(w.createdAt) + (w.updatedAt ? ' &#183; changed by ' + esc(w.updatedBy) + ' ' + esc(w.updatedAt) : '') + '</p></div>' +
+        '<button type="button" class="btn primary block" id="woOpenJob">Open job (finish list, slip)</button>' +
+        (canEdit ? '<a class="btn block" id="woEdit" style="margin-top:8px" href="#tool/workorders/' + esc(w.id) + '/edit">Edit work order</a>' : '');
+      $('#woOpenJob').onclick = function () { openJobRef(w.eventId, w.date); };
+    }).catch(fail);
+  }
+
+  function drawWoForm(w) {
+    if (!S.techs) { loading(); call('apiWorkOrders').then(function (r) { S.techs = r.techs; drawWoForm(w); }).catch(fail); return; }
+    var editing = !!w;
+    w = w || { date: S.boot.today, techs: [] };
+    function v(x) { return esc(x == null ? '' : x); }
+    app.innerHTML = backLink(editing ? '#tool/workorders/' + w.id : '#tool/workorders', editing ? 'Work order' : 'Work orders') +
+      '<h1>' + (editing ? 'Edit work order' : 'New work order') + '</h1>' +
+      '<form id="woForm" class="card" autocomplete="off">' +
+      '<label class="field" for="woCustomer">Customer</label><input type="text" id="woCustomer" maxlength="120" value="' + v(w.customer) + '">' +
+      '<label class="field" for="woAddress">Job address</label><input type="text" id="woAddress" maxlength="200" placeholder="12 Main St, Fryeburg ME" value="' + v(w.address) + '">' +
+      '<div class="grid2"><div><label class="field" for="woContactName">Contact name</label><input type="text" id="woContactName" maxlength="80" value="' + v(w.contactName) + '"></div>' +
+      '<div><label class="field" for="woContactPhone">Contact phone</label><input type="tel" id="woContactPhone" maxlength="20" value="' + v(w.contactPhone) + '"></div></div>' +
+      '<label class="field" for="woDesc">Job description (scope)</label><textarea id="woDesc" rows="5" maxlength="3000" placeholder="What needs doing? Materials to bring?">' + v(w.description) + '</textarea>' +
+      '<label class="field" for="woDate">Date</label><input type="date" id="woDate" value="' + v(w.date) + '">' +
+      '<div class="grid2"><div><label class="field" for="woStart">Start (optional)</label><input type="time" id="woStart" value="' + v(w.start) + '"></div>' +
+      '<div><label class="field" for="woEnd">End</label><input type="time" id="woEnd" value="' + v(w.end) + '"></div></div>' +
+      '<p class="muted small">No start time = all-day job, like most WES jobs.</p>' +
+      '<label class="field">Assigned techs</label><div class="techs" id="woTechs">' + S.techs.map(function (t) {
+        return '<label class="techbox"><input type="checkbox" name="tech" value="' + esc(t.email) + '"' + (w.techs.indexOf(t.email) >= 0 ? ' checked' : '') + '><span>' + esc(t.name) + '</span></label>';
+      }).join('') + '</div>' +
+      '<label class="field" for="woNotes">Notes (optional)</label><textarea id="woNotes" rows="3" maxlength="2000">' + v(w.notes) + '</textarea>' +
+      '<p class="muted small">Saving puts a Scheduled (default color) job on the WES calendar. Nobody gets an invitation or email. ' +
+        'Never put door, alarm or gate codes, WiFi passwords or key locations on a work order.</p>' +
+      '<button type="submit" class="btn primary big" id="woSave">' + (editing ? 'Save changes' : 'Create work order') + '</button></form>';
+    $('#woForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var input = {
+        customer: $('#woCustomer').value, address: $('#woAddress').value, contactName: $('#woContactName').value,
+        contactPhone: $('#woContactPhone').value, description: $('#woDesc').value, date: $('#woDate').value,
+        start: $('#woStart').value, end: $('#woEnd').value, notes: $('#woNotes').value,
+        techs: $all('#woTechs input:checked').map(function (c) { return c.value; })
+      };
+      if (!input.customer.trim()) { toast('Enter the customer.'); $('#woCustomer').focus(); return; }
+      if (input.description.trim().length < 3) { toast('Describe the job.'); $('#woDesc').focus(); return; }
+      var btn = $('#woSave'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      (editing ? call('apiUpdateWorkOrder', w.id, input) : call('apiCreateWorkOrder', input)).then(function (r) {
+        toast(editing ? 'Work order saved. Calendar updated.' : 'Work order created. It is on the WES calendar.', 4000);
+        go('#tool/workorders/' + r.workOrder.id);
+      }).catch(function (err) { btn.disabled = false; btn.textContent = editing ? 'Save changes' : 'Create work order'; fail(err); });
+    };
+  }
+
+  /* ================= Odds and Ends (v0.8) ================= */
+  var ODD_FILTERS = [['Open', 'Open'], ['Verify', 'Verify'], ['Done', 'Done']];
+  function oddChip(o) {
+    if (o.status === 'Verify') return '<span class="chip warn oddst">Verify</span>';
+    if (o.status === 'Done') return '<span class="chip c-banana oddst">Done</span>';
+    return '<span class="chip solid oddst">Open</span>';
+  }
+  function oddLine(o) {
+    var first = String(o.description || '').split('\n')[0];
+    return '<div class="line odd" data-id="' + esc(o.id) + '"><a class="l" href="#tool/odds/' + esc(o.id) + '"><span class="t">' + esc(o.title) + '</span>' +
+      (first && first !== o.title ? '<span class="s">' + esc(first.length > 90 ? first.slice(0, 90) + '\u2026' : first) + '</span>' : '') +
+      '<span class="s">' + esc(o.status === 'Done' ? 'Done ' + (o.doneLabel || '') : 'Added ' + (o.addedLabel || '')) +
+        (o.priority && o.priority !== 'Any time' ? ' &#183; <b>' + esc(o.priority) + '</b>' : '') + (o.estTime ? ' &#183; ' + esc(o.estTime) : '') + '</span>' +
+      (o.address ? '<span class="s">' + esc(o.address) + '</span>' : '') + '</a>' +
+      '<span class="r row">' + oddChip(o) + navBtn(o.navUrl) + '</span></div>';
+  }
+  function renderOdds(sub, mode) {
+    if (sub === 'new') return drawOddForm(null);
+    if (sub && (mode === 'edit' || mode === 'schedule')) {
+      loading();
+      return call('apiOdd', sub).then(function (r) { if (mode === 'edit') drawOddForm(r.odd); else drawOddSchedule(r.odd, r.techs); }).catch(fail);
+    }
+    if (sub) return renderOdd(sub);
+    loading();
+    call('apiOddsList').then(function (r) {
+      var lists = { Open: r.open, Verify: r.verify, Done: r.done };
+      var cur = S.oddsFilter && lists[S.oddsFilter] ? S.oddsFilter : 'Open';
+      app.innerHTML = backLink('#tools', 'Tools') + '<h1>Odds and Ends</h1>' +
+        '<p class="sub">Work that isn\'t scheduled or can be done any time. Not on the calendar until someone writes a slip or schedules it.</p>' +
+        '<a class="btn primary big" id="newOdd" href="#tool/odds/new">+ Add an odd job</a>' +
+        '<div class="seg" id="oddFilter" style="margin-top:12px">' + ODD_FILTERS.map(function (f) {
+          return '<button type="button" data-f="' + f[0] + '" class="' + (f[0] === cur ? 'on' : '') + '">' + esc(f[1]) + ' (' + lists[f[0]].length + ')</button>';
+        }).join('') + '</div>' +
+        '<input type="search" id="oddSearch" placeholder="Search name, address or work" style="margin:12px 0" value="' + esc(S.oddsQ || '') + '">' +
+        '<div class="card"><div id="oddList"></div></div>';
+      function draw() {
+        var q = $('#oddSearch').value.trim().toLowerCase();
+        S.oddsQ = $('#oddSearch').value;
+        var list = lists[cur].filter(function (o) {
+          return !q || [o.title, o.address, o.description, o.notes, o.materials].join(' ').toLowerCase().indexOf(q) >= 0;
+        });
+        $('#oddList').innerHTML = list.length ? list.map(oddLine).join('')
+          : '<p class="muted" id="oddEmpty">' + (q ? 'Nothing matches.' : cur === 'Open' ? 'Nothing open. Add one above.' : cur === 'Verify' ? 'Nothing to check.' : 'Nothing done yet.') + '</p>';
+      }
+      $all('#oddFilter button').forEach(function (b) {
+        b.onclick = function () {
+          cur = S.oddsFilter = b.getAttribute('data-f');
+          $all('#oddFilter button').forEach(function (x) { x.classList.toggle('on', x === b); });
+          draw();
+        };
+      });
+      $('#oddSearch').oninput = draw;
+      draw();
+    }).catch(fail);
+  }
+
+  function renderOdd(id) {
+    loading();
+    call('apiOdd', id).then(function (r) {
+      var o = r.odd, me = S.boot.user, live = o.status === 'Open' || o.status === 'Verify';
+      if (o.status === 'Scheduled' && o.workOrderId) { go('#tool/workorders/' + o.workOrderId); return; }
+      function row(label, v) { return v ? '<div class="line"><div class="l"><span class="t">' + esc(label) + '</span><span class="s pre">' + esc(v) + '</span></div></div>' : ''; }
+      app.innerHTML = backLink('#tool/odds', 'Odds and Ends') +
+        '<h1 id="oddTitle">' + esc(o.title) + '</h1><p class="sub">' + oddChip(o) + ' ' + esc(o.priority) + ' &#183; added ' + esc(o.addedLabel) + '</p>' +
+        '<div class="card">' +
+          (o.address ? '<div class="spread"><span id="oddAddr">' + esc(o.address) + '</span>' + navBtn(o.navUrl, 'oddNav') + '</div>' : '<p class="muted">No address.</p>') +
+          (o.contactName || o.contactPhone ? '<div class="line"><div class="l"><span class="t">Contact</span><span class="s">' + esc(o.contactName || o.title) + '</span></div>' +
+            (o.contactPhone ? '<a class="btn small" href="tel:' + esc(o.contactPhone.replace(/[^0-9+]/g, '')) + '">' + esc(o.contactPhone) + '</a>' : '') + '</div>' : '') +
+          row('Est. time', o.estTime) + row('Materials', o.materials) +
+        '</div>' +
+        '<div class="card"><h3>What needs doing</h3><div class="desc" id="oddDesc">' + esc(o.description) + '</div>' +
+          (o.notes ? '<h3>Notes</h3><div class="desc">' + esc(o.notes) + '</div>' : '') +
+          '<p class="muted small">Added by ' + esc(o.createdBy) + (o.createdAt ? ' ' + esc(o.createdAt) : '') + (o.updatedAt ? ' &#183; changed by ' + esc(o.updatedBy) + ' ' + esc(o.updatedAt) : '') + '</p></div>' +
+        (o.status === 'Done' ? '<div class="note" id="oddDoneNote">Done ' + esc(o.doneLabel) + (o.doneBy ? ' by ' + esc(o.doneBy) : '') +
+          (o.slipId ? ' &#183; slip ' + esc(o.slipId) + ' is on the WES calendar that day.' : ' (marked done, no slip).') + '</div>' : '') +
+        (o.status === 'Verify' ? '<div class="note warn" id="oddVerifyNote">Verify: this might already be done. Check it, then mark it Done or back to Open.</div>' : '') +
+        '<div class="oddacts">' +
+        (live ? '<button type="button" class="btn primary big" id="oddSlip">Write slip (I did this job)</button>' : '') +
+        (live && o.canEdit ? '<a class="btn big" id="oddSchedule" href="#tool/odds/' + esc(o.id) + '/schedule">Schedule it</a>' : '') +
+        (live && o.status === 'Open' ? '<button type="button" class="btn big" id="oddToVerify">Might be done: mark Verify</button>' : '') +
+        (o.status === 'Verify' ? '<div class="grid2"><button type="button" class="btn big" id="oddToDone">Mark Done</button>' +
+          '<button type="button" class="btn big" id="oddToOpen">Back to Open</button></div>' : '') +
+        (live && o.canEdit ? '<a class="btn block" id="oddEdit" href="#tool/odds/' + esc(o.id) + '/edit">Edit</a>' : '') +
+        (o.status === 'Done' && me.isModerator ? '<button type="button" class="btn big" id="oddReopen">Reopen</button>' : '') +
+        (me.isModerator ? '<button type="button" class="btn block danger" id="oddArchive">Remove from the list</button>' : '') +
+        '</div>';
+      function setStatus(to, msg) {
+        return function () {
+          this.disabled = true;
+          call('apiOddStatus', o.id, to).then(function () { toast(msg); renderOdd(o.id); }).catch(fail);
+        };
+      }
+      if ($('#oddSlip')) $('#oddSlip').onclick = function () { openSlipForm({ id: '', date: '', title: o.title }, null, o); };
+      if ($('#oddToVerify')) $('#oddToVerify').onclick = setStatus('Verify', 'Marked Verify.');
+      if ($('#oddToDone')) $('#oddToDone').onclick = setStatus('Done', 'Marked Done.');
+      if ($('#oddToOpen')) $('#oddToOpen').onclick = setStatus('Open', 'Back to Open.');
+      if ($('#oddReopen')) $('#oddReopen').onclick = function () {
+        if (!confirm('Reopen this odd job? Its slip stays as it is; the next slip will be a new one.')) return;
+        setStatus('Open', 'Reopened.').call(this);
+      };
+      if ($('#oddArchive')) $('#oddArchive').onclick = function () {
+        var why = prompt('Remove "' + o.title + '" from Odds and Ends? It is kept in the sheet and logged. Reason (optional):', '');
+        if (why === null) return;
+        call('apiOddArchive', o.id, why).then(function () { toast('Removed from the list.'); go('#tool/odds'); }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  function drawOddForm(o) {
+    var editing = !!o;
+    o = o || { priority: 'Any time' };
+    function v(x) { return esc(x == null ? '' : x); }
+    app.innerHTML = backLink(editing ? '#tool/odds/' + o.id : '#tool/odds', editing ? 'Odd job' : 'Odds and Ends') +
+      '<h1>' + (editing ? 'Edit odd job' : 'Add an odd job') + '</h1>' +
+      '<form id="oddForm" class="card" autocomplete="off">' +
+      '<label class="field" for="oTitle">Job or customer name</label><input type="text" id="oTitle" maxlength="120" value="' + v(o.title) + '">' +
+      '<label class="field" for="oAddress">Address (optional)</label><input type="text" id="oAddress" maxlength="200" placeholder="12 Main St, Fryeburg ME" value="' + v(o.address) + '">' +
+      '<div class="grid2"><div><label class="field" for="oContactName">Contact (optional)</label><input type="text" id="oContactName" maxlength="80" value="' + v(o.contactName) + '"></div>' +
+      '<div><label class="field" for="oContactPhone">Phone</label><input type="tel" id="oContactPhone" maxlength="20" value="' + v(o.contactPhone) + '"></div></div>' +
+      '<label class="field" for="oDesc">What needs doing</label><textarea id="oDesc" rows="4" maxlength="3000" placeholder="Swap the bad GFCI in the garage">' + v(o.description) + '</textarea>' +
+      '<div class="grid2"><div><label class="field" for="oEst">Est. time (optional)</label><input type="text" id="oEst" maxlength="40" placeholder="1 h" value="' + v(o.estTime) + '"></div>' +
+      '<div><label class="field">When</label><div class="seg" id="oPri">' + ['Any time', 'Soon', 'Urgent'].map(function (p) {
+        return '<button type="button" data-p="' + p + '" class="' + (p === o.priority ? 'on' : '') + '">' + p + '</button>'; }).join('') + '</div></div></div>' +
+      '<label class="field" for="oMats">Materials (optional)</label><textarea id="oMats" rows="2" maxlength="1000" placeholder="What to bring">' + v(o.materials) + '</textarea>' +
+      '<label class="field" for="oNotes">Notes (optional)</label><textarea id="oNotes" rows="3" maxlength="2000">' + v(o.notes) + '</textarea>' +
+      '<p class="muted small">Not put on the calendar. Never put door, alarm or gate codes, WiFi passwords or key locations here.</p>' +
+      '<button type="submit" class="btn primary big" id="oddSave">' + (editing ? 'Save changes' : 'Add to Odds and Ends') + '</button></form>';
+    $all('#oPri button').forEach(function (b) {
+      b.onclick = function () { $all('#oPri button').forEach(function (x) { x.classList.toggle('on', x === b); }); };
+    });
+    $('#oddForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var pb = $('#oPri button.on');
+      var input = { title: $('#oTitle').value, address: $('#oAddress').value, contactName: $('#oContactName').value,
+        contactPhone: $('#oContactPhone').value, description: $('#oDesc').value, estTime: $('#oEst').value,
+        materials: $('#oMats').value, notes: $('#oNotes').value, priority: pb ? pb.getAttribute('data-p') : 'Any time' };
+      if (!input.title.trim()) { toast('Enter the job or customer name.'); $('#oTitle').focus(); return; }
+      if (input.description.trim().length < 3) { toast('Describe what needs doing.'); $('#oDesc').focus(); return; }
+      var btn = $('#oddSave'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      (editing ? call('apiOddUpdate', o.id, input) : call('apiOddCreate', input)).then(function (r) {
+        toast(editing ? 'Saved.' : 'Added to Odds and Ends.');
+        go('#tool/odds/' + r.odd.id);
+      }).catch(function (err) { btn.disabled = false; btn.textContent = editing ? 'Save changes' : 'Add to Odds and Ends'; fail(err); });
+    };
+  }
+
+  function drawOddSchedule(o, techs) {
+    app.innerHTML = backLink('#tool/odds/' + o.id, 'Odd job') + '<h1>Schedule it</h1><p class="sub">' + esc(o.title) + '</p>' +
+      '<form id="oddSchedForm" class="card" autocomplete="off">' +
+      '<label class="field" for="osDate">Date</label><input type="date" id="osDate" value="' + esc(S.boot.today) + '">' +
+      '<div class="grid2"><div><label class="field" for="osStart">Start (optional)</label><input type="time" id="osStart"></div>' +
+      '<div><label class="field" for="osEnd">End</label><input type="time" id="osEnd"></div></div>' +
+      '<p class="muted small">No start time = all-day job.</p>' +
+      '<label class="field">Assigned techs</label><div class="techs" id="osTechs">' + techs.map(function (t) {
+        return '<label class="techbox"><input type="checkbox" value="' + esc(t.email) + '"><span>' + esc(t.name) + '</span></label>';
+      }).join('') + '</div>' +
+      '<p class="muted small">This makes a normal work order: a Scheduled (default color) job on the WES calendar with the address, ' +
+        'what needs doing, est. time and materials. Nobody gets an invitation. It leaves Odds and Ends.</p>' +
+      '<button type="submit" class="btn primary big" id="osSave">Put it on the calendar</button></form>';
+    $('#oddSchedForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var input = { date: $('#osDate').value, start: $('#osStart').value, end: $('#osEnd').value,
+                    techs: $all('#osTechs input:checked').map(function (c) { return c.value; }) };
+      if (!input.date) { toast('Pick the date.'); return; }
+      var btn = $('#osSave'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      call('apiOddSchedule', o.id, input).then(function (r) {
+        toast('Scheduled. It is on the WES calendar as work order ' + r.workOrder.id + '.', 4000);
+        go('#tool/workorders/' + r.workOrder.id);
+      }).catch(function (err) { btn.disabled = false; btn.textContent = 'Put it on the calendar'; fail(err); });
+    };
+  }
+
+  /* ================= Finish lists ================= */
+  function finishSub(l) {
+    return (l.openCount ? l.openCount + ' open' : 'All done') + ' &#183; ' + l.doneCount + ' done' +
+      (l.grapeDate ? ' &#183; return visit ' + esc(l.grapeLabel) : '');
+  }
+  function finishChip(l) {
+    return l.archived ? '<span class="chip">Archived</span>' : l.openCount ? '<span class="chip c-grape">Finish list</span>' : '<span class="chip">All done</span>';
+  }
+  function renderFinish(sub) {
+    if (sub && sub !== 'new') return renderFinishList(sub);
+    var pre = sub === 'new' ? (S.finishPrefill || {}) : {};
+    S.finishPrefill = null;
+    loading();
+    call('apiFinishLists').then(function (r) {
+      app.innerHTML = backLink('#tools', 'Tools') + '<h1>Finish lists</h1><p class="sub">Work still to do on each customer or project. Whatever is left carries over to the next visit.</p>' +
+        '<button type="button" class="btn primary big" id="newList">+ New finish list</button>' +
+        '<form id="listForm" class="card' + (sub === 'new' ? '' : ' hidden') + '" style="margin-top:12px" autocomplete="off">' +
+          '<label class="field" for="flCustomer">Customer</label><input type="text" id="flCustomer" maxlength="120" value="' + esc(pre.customer || '') + '">' +
+          '<label class="field" for="flProject">Project (optional)</label><input type="text" id="flProject" maxlength="120" placeholder="Kitchen remodel">' +
+          '<label class="field" for="flAddress">Address (optional)</label><input type="text" id="flAddress" maxlength="200" value="' + esc(pre.address || '') + '">' +
+          '<label class="field" for="flItems">Items, one per line</label><textarea id="flItems" rows="4" maxlength="5000" placeholder="Hang dining pendant&#10;Trim out island receptacles"></textarea>' +
+          '<button type="submit" class="btn primary block" id="flCreate" style="margin-top:10px">Start list</button></form>' +
+        '<input type="text" id="flSearch" placeholder="Search customer or project" style="margin:12px 0">' +
+        '<div id="flLists"></div>';
+      function draw() {
+        var q = $('#flSearch').value.trim().toLowerCase();
+        var ls = r.lists.filter(function (l) { return !q || l.name.toLowerCase().indexOf(q) >= 0 || l.address.toLowerCase().indexOf(q) >= 0; });
+        $('#flLists').innerHTML = ls.length ? '<div class="card">' + ls.map(function (l) {
+          return '<a class="line" href="#tool/finish/' + esc(l.id) + '" data-list="' + esc(l.id) + '"><div class="l"><span class="t">' + esc(l.name) + '</span>' +
+            '<span class="s">' + finishSub(l) + '</span>' + (l.preview.length ? '<span class="s">' + esc(l.preview.join(' \u00b7 ')) + '</span>' : '') + '</div>' +
+            '<span class="r">' + finishChip(l) + '</span></a>';
+        }).join('') + '</div>' : '<p class="muted">' + (r.lists.length ? 'No list matches.' : 'No finish lists yet. Start one here, from a job, or from a slip.') + '</p>';
+      }
+      draw();
+      $('#flSearch').oninput = draw;
+      $('#newList').onclick = function () { $('#listForm').classList.toggle('hidden'); $('#flCustomer').focus(); };
+      $('#listForm').onsubmit = function (ev) {
+        ev.preventDefault();
+        var input = { customer: $('#flCustomer').value, project: $('#flProject').value, address: $('#flAddress').value, eventId: pre.eventId || '',
+                      items: lines($('#flItems').value).map(function (l) { return { description: l.replace(/^[-*]\s*/, '') }; }) };
+        if (!input.customer.trim()) { toast('Enter the customer.'); return; }
+        var b = $('#flCreate'); b.disabled = true;
+        call('apiFinishCreate', input).then(function (x) { toast('Finish list started.'); go('#tool/finish/' + x.list.id); })
+          .catch(function (err) { b.disabled = false; fail(err); });
+      };
+    }).catch(fail);
+  }
+
+  function renderFinishList(id) {
+    loading();
+    call('apiFinishList', id).then(drawFinishList).catch(fail);
+  }
+  function drawFinishList(l) {
+    var me = S.boot.user, canManage = me.isModerator || l.createdBy === me.email;
+    function itemHtml(i) {
+      var canDel = me.isModerator || i.addedBy === me.email;
+      return '<div class="fitem' + (i.done ? ' done' : '') + '" data-id="' + esc(i.id) + '">' +
+        '<label class="check"><input type="checkbox" class="fchk"' + (i.done ? ' checked' : '') + '><span><span class="t">' + esc(i.description) + '</span>' +
+        (i.materials ? '<span class="s">Materials: ' + esc(i.materials) + '</span>' : '') +
+        (i.note ? '<span class="s">Note: ' + esc(i.note) + '</span>' : '') +
+        (i.done ? '<span class="s">Done by ' + esc(i.doneBy) + ' ' + esc(i.doneOn) + '</span>' : '') + '</span></label>' +
+        '<span class="fbtns"><button type="button" class="btn small fnote">Note</button>' +
+        (canDel ? '<button type="button" class="btn small fdel" aria-label="Delete item">&#215;</button>' : '') + '</span></div>';
+    }
+    var open = l.items.filter(function (i) { return !i.done; }), done = l.items.filter(function (i) { return i.done; });
+    app.innerHTML = backLink('#tool/finish', 'Finish lists') +
+      '<h1 id="flName">' + esc(l.name) + '</h1><p class="sub">' + finishSub(l) + ' &#183; ' + l.visits + (l.visits === 1 ? ' visit' : ' visits') + '</p>' +
+      (l.address ? '<div class="card"><div class="spread"><span>' + esc(l.address) + '</span>' + navBtn(l.navUrl, 'flNav') + '</div></div>' : '') +
+      '<div class="card"><div class="card-head"><h3>Open items</h3>' + finishChip(l) + '</div><div id="flOpen">' +
+        (open.length ? open.map(itemHtml).join('') : '<p class="muted">Nothing left to do.</p>') + '</div>' +
+        '<form id="itemForm" autocomplete="off"><label class="field" for="fiDesc">Add an item</label>' +
+        '<input type="text" id="fiDesc" maxlength="300" placeholder="Work still to do">' +
+        '<input type="text" id="fiMats" maxlength="300" placeholder="Materials needed (optional)" style="margin-top:8px">' +
+        '<button type="submit" class="btn block" id="fiAdd" style="margin-top:8px">+ Add item</button></form></div>' +
+      '<div class="card"><h3>Return visit (Grape)</h3>' +
+        (l.grapeDate ? '<p>On the WES calendar for <b id="flGrape">' + esc(l.grapeLabel) + '</b>.</p>' : '<p class="muted">Not on the calendar yet.</p>') +
+        '<div class="row"><input type="date" id="flVisitDate" value="' + esc(l.grapeDate || '') + '" style="flex:1">' +
+        '<button type="button" class="btn" id="flSchedule">' + (l.grapeDate ? 'Move visit' : 'Schedule visit') + '</button></div>' +
+        '<p class="muted small">Puts a Grape event on the WES calendar listing the open items, and keeps it up to date as items get ticked.</p></div>' +
+      (done.length ? '<div class="card"><h3>Done (' + done.length + ')</h3><div id="flDone">' + done.map(itemHtml).join('') + '</div></div>' : '') +
+      (canManage ? '<button type="button" class="btn block" id="flArchive">' + (l.archived ? 'Reopen list' : 'Archive list') + '</button>' : '');
+    function after(r, msg) {
+      if (r.warning) toast(r.warning, 6000); else if (msg) toast(msg);
+      drawFinishList(r.list);
+    }
+    $all('.fitem').forEach(function (row) {
+      var itemId = row.getAttribute('data-id');
+      $('.fchk', row).onchange = function () {
+        var on = this.checked;
+        call('apiFinishSetItem', itemId, { done: on }).then(function (r) { after(r, on ? 'Ticked off.' : 'Back on the list.'); }).catch(fail);
+      };
+      $('.fnote', row).onclick = function () {
+        var cur = l.items.filter(function (i) { return i.id === itemId; })[0];
+        var n = window.prompt('Note for this item', cur ? cur.note : '');
+        if (n === null) return;
+        call('apiFinishSetItem', itemId, { note: n }).then(function (r) { after(r, 'Note saved.'); }).catch(fail);
+      };
+      var del = $('.fdel', row);
+      if (del) del.onclick = function () {
+        if (!window.confirm('Delete this item? (Tick it instead if the work got done.)')) return;
+        call('apiFinishDeleteItem', itemId).then(function (r) { after(r, 'Item deleted.'); }).catch(fail);
+      };
+    });
+    $('#itemForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var d = $('#fiDesc').value.trim();
+      if (!d) { toast('Describe the item.'); return; }
+      call('apiFinishAddItem', l.id, { description: d, materials: $('#fiMats').value }).then(function (r) { after(r, 'Item added.'); }).catch(fail);
+    };
+    $('#flSchedule').onclick = function () {
+      var ds = $('#flVisitDate').value;
+      if (!ds) { toast('Pick the date for the return visit.'); return; }
+      call('apiFinishSchedule', l.id, ds).then(function (r) {
+        toast(r.moved ? 'Return visit moved.' : 'Return visit on the WES calendar (Grape).', 4000); drawFinishList(r.list);
+      }).catch(fail);
+    };
+    var ar = $('#flArchive');
+    if (ar) ar.onclick = function () {
+      call('apiFinishUpdateList', l.id, { archived: !l.archived }).then(function (r) { after(r, r.list.archived ? 'List archived.' : 'List reopened.'); }).catch(fail);
+    };
+  }
+
+  /* ================= Photos (shared) and the Gallery ================= */
+  S.thumbs = {};
+  /** Shrinks a photo on the phone: longest side <= max px, JPEG. Re-drawing drops EXIF (no GPS ever leaves the phone). */
+  function compressImage(file, max, quality) {
+    if (typeof window.WES_COMPRESS === 'function') return window.WES_COMPRESS(file, max, quality); // test seam (jsdom has no canvas)
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, max / Math.max(w, h));
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+        var cx = c.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+        cx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve({ dataUrl: c.toDataURL('image/jpeg', quality), width: c.width, height: c.height });
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('That file is not a photo this phone can open.')); };
+      img.src = url;
+    });
+  }
+  function thumbBtn(p) {
+    return '<button type="button" class="thumb" data-pid="' + esc(p.id) + '" aria-label="' + esc(p.caption || 'Photo') + '">' +
+      (S.thumbs[p.id] ? '<img alt="" src="' + S.thumbs[p.id] + '">' : '<img alt="">') + '</button>';
+  }
+  /** Loads missing thumbnails for the buttons inside root, 24 per server call. */
+  function loadThumbs(root) {
+    var need = $all('.thumb', root).map(function (b) { return b.getAttribute('data-pid'); }).filter(function (id) { return !S.thumbs[id]; });
+    need = need.filter(function (id, i) { return need.indexOf(id) === i; });
+    function fill() {
+      $all('.thumb', root).forEach(function (b) { var u = S.thumbs[b.getAttribute('data-pid')]; if (u) $('img', b).src = u; });
+    }
+    fill();
+    for (var i = 0; i < need.length; i += 24) {
+      call('apiPhotoThumbs', need.slice(i, i + 24)).then(function (m) { Object.keys(m).forEach(function (k) { S.thumbs[k] = m[k]; }); fill(); }).catch(function () {});
+    }
+  }
+  function wireThumbs(root, photos) {
+    $all('.thumb', root).forEach(function (b) {
+      b.onclick = function () {
+        var p = photos.filter(function (x) { return x.id === b.getAttribute('data-pid'); })[0];
+        if (p) openPhoto(p, photos);
+      };
+    });
+  }
+  /** Job name as the server keys it: trimmed, single spaces, any case. */
+  function jobKey(v) { return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+  /**
+   * EXIF DateTimeOriginal ('yyyy-mm-dd HH:mm') from the first bytes of a JPEG, or '' (not a JPEG / no EXIF date).
+   * Read before compressImage re-draws the photo, which drops all EXIF (GPS included). Falls back to IFD0 DateTime.
+   */
+  function exifDate(buf) {
+    try {
+      var v = new DataView(buf), len = v.byteLength, off = 2;
+      if (len < 4 || v.getUint16(0) !== 0xFFD8) return '';
+      while (off + 4 <= len) {
+        var mk = v.getUint16(off);
+        if ((mk & 0xFF00) !== 0xFF00 || mk === 0xFFDA) return '';
+        var segLen = v.getUint16(off + 2);
+        if (mk === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) return tiffDate(v, off + 10, Math.min(len, off + 2 + segLen));
+        off += 2 + segLen;
+      }
+    } catch (e) {}
+    return '';
+  }
+  function tiffDate(v, t, end) {
+    var le = v.getUint16(t) === 0x4949;
+    function u16(o) { return v.getUint16(o, le); }
+    function u32(o) { return v.getUint32(o, le); }
+    function ifd(o) { var m = {}, n = u16(o); for (var i = 0; i < n; i++) { var e = o + 2 + i * 12; if (e + 12 > end) break; m[u16(e)] = e; } return m; }
+    function ascii(e) {
+      var c = u32(e + 4), at = c > 4 ? t + u32(e + 8) : e + 8, out = '';
+      for (var i = 0; i < c && at + i < end; i++) { var ch = v.getUint8(at + i); if (!ch) break; out += String.fromCharCode(ch); }
+      return out;
+    }
+    function fmt(x) { var m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2})/.exec(x || ''); return m && m[1] !== '0000' ? m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] : ''; }
+    var i0 = ifd(t + u32(t + 4));
+    if (i0[0x8769]) { var ex = ifd(t + u32(i0[0x8769] + 8)); if (ex[0x9003]) { var d = fmt(ascii(ex[0x9003])); if (d) return d; } }
+    return i0[0x0132] ? fmt(ascii(i0[0x0132])) : '';
+  }
+  function localStamp(d) {
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  /** When the photo was taken: {photoDate, dateSource} from EXIF, else the file's date; {'' , 'upload'} lets the server stamp it. */
+  function photoTakenAt(file) {
+    function fromFile() { return file.lastModified ? { photoDate: localStamp(new Date(file.lastModified)), dateSource: 'file' } : { photoDate: '', dateSource: 'upload' }; }
+    return new Promise(function (resolve) {
+      try {
+        var r = new FileReader();
+        r.onload = function () { var d = exifDate(r.result); resolve(d ? { photoDate: d, dateSource: 'exif' } : fromFile()); };
+        r.onerror = function () { resolve(fromFile()); };
+        r.readAsArrayBuffer(file.slice(0, 262144));
+      } catch (e) { resolve(fromFile()); }
+    });
+  }
+  /** Gallery Add photo: job name (with suggestions), optional description, take / attach; date taken is automatic. */
+  function addPhotoHtml() {
+    return '<div class="card" id="gAdd"><h3>Add photo</h3>' +
+      '<label class="field" for="gJob">Job name</label>' +
+      '<input type="text" id="gJob" list="gJobNames" maxlength="120" autocomplete="off" placeholder="e.g. Jean Olive" value="' + esc(S.galleryJob || '') + '">' +
+      '<datalist id="gJobNames"></datalist>' +
+      '<label class="field" for="gCap">Short description (optional)</label>' +
+      '<input type="text" id="gCap" maxlength="200" placeholder="e.g. Panel before, garage outlet">' +
+      '<label class="btn primary block pick" id="gPick" style="margin-top:10px">+ Take / attach photos<input type="file" id="gFile" class="pfile" accept="image/*" multiple></label>' +
+      '<p class="pstat muted small" id="gStat" aria-live="polite"></p>' +
+      '<p class="muted small">The date the photo was taken is read from the photo itself. Never photograph door, alarm or gate codes, WiFi passwords or key locations.</p></div>';
+  }
+  function wireAddPhoto(photos, onSaved) {
+    call('apiPhotoJobNames').then(function (r) {
+      var dl = $('#gJobNames'); if (!dl) return;
+      dl.innerHTML = (r.names || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      S.photoJobNames = r.names || [];
+    }).catch(function () {});
+    var input = $('#gFile'), stat = $('#gStat');
+    input.onchange = function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      var job = $('#gJob').value.replace(/\s+/g, ' ').trim();
+      if (!job) { try { input.value = ''; } catch (e) {} toast('Enter the job name first.'); $('#gJob').focus(); return; }
+      // Same job typed another way joins the existing spelling.
+      var known = (S.photoJobNames || []).concat(photos.map(function (p) { return p.jobName; })).filter(function (n) { return jobKey(n) === jobKey(job); })[0];
+      if (known) { job = known; $('#gJob').value = known; }
+      S.galleryJob = job;
+      var caption = $('#gCap').value, n = 0, okCount = 0;
+      function next() {
+        if (n >= files.length) {
+          stat.textContent = okCount ? okCount + (okCount === 1 ? ' photo saved to ' : ' photos saved to ') + job + '.' : '';
+          try { input.value = ''; } catch (e) {}
+          if (okCount) { $('#gCap').value = ''; onSaved(); }
+          return;
+        }
+        var f = files[n++];
+        stat.textContent = 'Saving photo ' + n + ' of ' + files.length + '\u2026';
+        photoTakenAt(f).then(function (taken) {
+          return Promise.all([compressImage(f, 1600, 0.82), compressImage(f, 400, 0.7)]).then(function (out) {
+            return call('apiPhotoUpload', { jobName: job, caption: caption, image: out[0].dataUrl, thumb: out[1].dataUrl,
+                                            width: out[0].width, height: out[0].height, photoDate: taken.photoDate, dateSource: taken.dateSource }).then(function (r) {
+              S.thumbs[r.photo.id] = out[1].dataUrl;
+              photos.unshift(r.photo); okCount++;
+            });
+          });
+        }).catch(function (err) { fail(err); }).then(next);
+      }
+      next();
+    };
+  }
+
+  var lightEl = null;
+  function closePhoto() { if (lightEl && lightEl.parentNode) lightEl.parentNode.removeChild(lightEl); lightEl = null; }
+  /** Full-screen photo on top of whatever is open (the job popup or slip form stays underneath). */
+  function openPhoto(p, list) {
+    closePhoto();
+    var me = S.boot.user, canDel = me.isModerator || p.techEmail === me.email;
+    lightEl = document.createElement('div');
+    lightEl.className = 'lightbox'; lightEl.id = 'lightbox';
+    lightEl.innerHTML = '<div class="lb-head"><span class="lb-cap" id="lbCap">' + esc(p.caption || 'Photo') + '</span>' +
+      '<button type="button" class="xbtn lb-x" id="lbX" aria-label="Close">&#215;</button></div>' +
+      '<div class="lb-img"><img id="lbImg" alt="' + esc(p.caption || 'Job photo') + '"' + (S.thumbs[p.id] ? ' src="' + S.thumbs[p.id] + '"' : '') + '></div>' +
+      '<div class="lb-meta" id="lbMeta">' + esc(p.jobName) + ' &#183; taken ' + esc(p.photoDate || p.dateLabel) +
+        (p.dateSource === 'upload' ? ' (upload time)' : p.dateSource === 'file' ? ' (file date)' : '') + '<br>' + esc(p.techEmail) + '</div>' +
+      '<div class="lb-actions">' + (p.eventId ? '<button type="button" class="btn small" id="lbJob">Open job</button>' : '') +
+      (canDel ? '<button type="button" class="btn small" id="lbDel">Delete photo</button>' : '') + '</div>';
+    document.body.appendChild(lightEl);
+    $('#lbX').onclick = closePhoto;
+    if ($('#lbJob')) $('#lbJob').onclick = function () { closePhoto(); openJobRef(p.eventId, p.date); };
+    var del = $('#lbDel');
+    if (del) del.onclick = function () {
+      if (!window.confirm('Delete this photo? It goes to the Drive trash (Doug can restore it for 30 days).')) return;
+      call('apiPhotoDelete', p.id).then(function () {
+        closePhoto();
+        if (list) { var i = list.indexOf(p); if (i >= 0) list.splice(i, 1); }
+        $all('.thumb[data-pid="' + p.id + '"]').forEach(function (b) { b.parentNode.removeChild(b); });
+        toast('Photo deleted.');
+        if (S.galleryDraw && $('#gList')) S.galleryDraw();
+      }).catch(fail);
+    };
+    call('apiPhotoFull', p.id).then(function (f) { var im = $('#lbImg'); if (im && lightEl) im.src = f.dataUrl; }).catch(function (err) { if (lightEl) fail(err); });
+  }
+
+  /** Gallery: the one place to add photos. Browse by job name (default) or by the date taken, with search and a date range. */
+  function renderGallery() {
+    loading();
+    if (S.galleryBy !== 'date') S.galleryBy = 'job';
+    call('apiGallery').then(function (g) {
+      var photos = g.photos;
+      app.innerHTML = backLink('#tools', 'Tools') + '<h1>Picture gallery</h1><p class="sub" id="gCount">' + g.total + (g.total === 1 ? ' photo' : ' photos') + '</p>' +
+        addPhotoHtml() +
+        '<div class="seg" id="gBy">' + [['job', 'By job'], ['date', 'By date']].map(function (b) {
+          return '<button type="button" data-by="' + b[0] + '"' + (S.galleryBy === b[0] ? ' class="on"' : '') + '>' + b[1] + '</button>';
+        }).join('') + '</div>' +
+        '<input type="text" id="gSearch" placeholder="Search job name or description" style="margin:12px 0 6px" value="' + esc(S.galleryQ || '') + '">' +
+        '<div class="row" id="gDates"><label class="small">From <input type="date" id="gFrom" value="' + esc(S.galleryFrom || '') + '"></label>' +
+          '<label class="small">To <input type="date" id="gTo" value="' + esc(S.galleryTo || '') + '"></label>' +
+          '<button type="button" class="btn small" id="gClear">Clear</button></div>' +
+        '<div id="gList" style="margin-top:12px"></div>' +
+        '<p class="muted small">Photos are shrunk on the phone (no location kept) and saved in the walkerelectric Google Drive: WES Job Photos / job name.</p>';
+      function draw() {
+        var q = $('#gSearch').value.trim().toLowerCase(), from = $('#gFrom').value, to = $('#gTo').value;
+        S.galleryQ = $('#gSearch').value; S.galleryFrom = from; S.galleryTo = to;
+        var list = photos.filter(function (p) {
+          if (from && p.date < from) return false;
+          if (to && p.date > to) return false;
+          return !q || [p.jobName, p.caption, p.jobTitle, p.date, p.dateLabel].join(' ').toLowerCase().indexOf(q) >= 0;
+        });
+        var by = S.galleryBy, groups = [], idx = {};
+        list.forEach(function (p) {
+          var k = by === 'job' ? p.jobKey || jobKey(p.jobName) : p.date;
+          if (!idx[k]) { idx[k] = { title: by === 'job' ? p.jobName : p.dateLabel, photos: [], first: p.date, last: p.date }; groups.push(idx[k]); }
+          var gr = idx[k];
+          gr.photos.push(p);
+          if (p.date < gr.first) gr.first = p.date;
+          if (p.date > gr.last) gr.last = p.date;
+        });
+        if (by === 'job') groups.sort(function (a, b) { return a.last < b.last ? 1 : a.last > b.last ? -1 : (a.title.toLowerCase() < b.title.toLowerCase() ? -1 : 1); });
+        $('#gList').innerHTML = groups.length ? groups.map(function (gr) {
+          var sub = by === 'job' ? (gr.first === gr.last ? gr.first : gr.first + ' to ' + gr.last)
+            : gr.photos.map(function (p) { return p.jobName; }).filter(function (n, i, a) { return a.indexOf(n) === i; }).join(', ');
+          return '<div class="card gcard"><div class="card-head"><h3>' + esc(gr.title) + '</h3><span class="muted small">' + gr.photos.length +
+            (gr.photos.length === 1 ? ' photo' : ' photos') + '</span></div><p class="muted small">' + esc(sub) + '</p>' +
+            '<div class="thumbs">' + gr.photos.map(thumbBtn).join('') + '</div></div>';
+        }).join('') : '<p class="muted" id="gEmpty">' + (photos.length ? 'No photos match.' : 'No photos yet. Add the first one above.') + '</p>';
+        $('#gCount').textContent = photos.length + (photos.length === 1 ? ' photo' : ' photos');
+        loadThumbs($('#gList'));
+        wireThumbs($('#gList'), photos);
+      }
+      S.galleryDraw = draw;
+      draw();
+      wireAddPhoto(photos, draw);
+      $('#gSearch').oninput = draw;
+      $('#gFrom').onchange = draw; $('#gTo').onchange = draw;
+      $('#gClear').onclick = function () { $('#gSearch').value = ''; $('#gFrom').value = ''; $('#gTo').value = ''; draw(); };
+      $all('#gBy button').forEach(function (b) {
+        b.onclick = function () {
+          S.galleryBy = b.getAttribute('data-by');
+          $all('#gBy button').forEach(function (x) { x.classList.toggle('on', x === b); });
+          draw();
+        };
+      });
+    }).catch(fail);
+  }
+
+  /* ================= Time card (nested) ================= */
+  function renderTime() {
+    var tc = S.tc, to = tc.timeOff;
+    var offSum = 'Sick ' + to.sick.used + ' \u00b7 Vac ' + to.vacation.used;
+    app.innerHTML = '<h1>Time card</h1><p class="sub">' + esc(longDate(tc.today)) + '</p>' +
+      '<div class="card"><div class="card-head"><h3>Today</h3><a class="btn small primary" href="#log/' + esc(tc.today) + '">' +
+        (tc.todayEntry ? 'Open' : 'Log time') + '</a></div>' + todaySummary(tc) + '</div>' +
+      '<a class="drill" id="drillWeek" href="#week"><span>My week</span><span class="val">' + fmtH(tc.week.totalHours) + '</span></a>' +
+      '<a class="drill" id="drillOff" href="#timeoff"><span>Time off</span><span class="val">' + esc(offSum) + '</span></a>' +
+      (to.flagged.length ? '<div class="note warn">' + days(to.flagged.length) + ' logged past your allotment this year. Doug and Duane can see it.</div>' : '') +
+      '<p class="muted small">Every change you save is kept with a reason. The app never records your location.</p>';
+  }
+
+  /** My week, or (moderators) someone else's week: #week/<date>/<email> */
+  function renderWeek(refDate, email) {
+    var mine = !email || email === S.boot.user.email;
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiTimeCard', refDate || '', mine ? '' : email).then(function (tc) {
+      if (mine && tc.week.isCurrent) S.tc = tc;
+      var w = tc.week, base = mine ? '' : '/' + encodeURIComponent(email);
+      var rows = w.days.map(function (d) {
+        // v0.9: one line per day, the day's blocks summed
+        var e = d.entry, sub = '', right = '';
+        if (e) {
+          sub = d.dayType === 'Work' ? (d.blocks.length === 1 ? blockRange(e) : d.blocks.length + ' blocks')
+                                     : d.dayType + (e.start ? ', ' + e.startLabel + ' - ' + e.endLabel : '');
+          right = (d.overAllotment ? '<span class="chip warn">Over</span> ' : '') + (d.open ? '<span class="chip">Open</span> ' : '') +
+                  (d.dayType === 'Work' ? fmtH(d.hours) : '<span class="chip solid">' + esc(d.dayType) + '</span>' + (d.hours ? ' ' + fmtH(d.hours) : ''));
+        } else {
+          sub = d.isFuture ? '' : 'Nothing logged';
+          right = '<span class="muted">+ Add</span>';
+        }
+        return '<a class="line" href="#log/' + esc(d.date) + base + '"><div class="l"><span class="t">' +
+          esc(d.label) + (d.isToday ? ' (today)' : '') + (d.edited ? ' <span class="muted small">edited</span>' : '') + '</span>' +
+          '<span class="s">' + esc(sub) + '</span></div><span class="r">' + right + '</span></a>';
+      }).join('');
+      app.innerHTML = '<h1>' + (mine ? 'My week' : esc(tc.person.name) + '\'s week') + '</h1>' +
+        '<div class="card"><div class="card-head"><a class="btn small" href="#week/' + esc(w.prev) + base + '">&#8249;</a>' +
+        '<h3>' + esc(w.label) + '</h3><a class="btn small" href="#week/' + esc(w.next) + base + '">&#8250;</a></div>' + rows +
+        '<div class="line total"><span>Total</span><span class="r" id="weekTotal">' + fmtH(w.totalHours) + '</span></div></div>' +
+        '<p class="muted small">Tap a day to see its blocks, add one or fix one.</p>' +
+        (mine ? '<a class="btn block" href="#time">Back to Time card</a>' : '<a class="btn block" href="#mod-time/' + esc(w.start) + '">Back to everyone\'s time</a>');
+    }).catch(fail);
+  }
+
+  function renderTimeOff() {
+    var to = S.tc.timeOff;
+    app.innerHTML = '<h1>Time off</h1><p class="sub">' + to.year + ' so far</p>' +
+      '<div class="card">' + offLine('Sick days', to.sick) + offLine('Vacation days', to.vacation) + offLine('Holidays', to.holiday) + '</div>' +
+      '<div class="card"><h3>Recent time off</h3>' + (to.recent.length ? to.recent.map(function (e) {
+        return '<div class="line"><div class="l"><span class="t">' + esc(e.dateLabel) + '</span></div><span class="r">' +
+          (e.overAllotment ? '<span class="chip warn">Over</span> ' : '') + '<span class="chip solid">' + esc(e.dayType) + '</span></span></div>';
+      }).join('') : '<p class="muted">None this year.</p>') + '</div>' +
+      '<p class="muted small">Read-only. Doug or Duane set allotments. If you log Sick or Vacation with none left, the app warns you, ' +
+      'still saves it, and flags it for them.</p><a class="btn block" href="#time">Back to Time card</a>';
+  }
+
+  /* ================= Log time: the day (v0.9 blocks) and one block (create / edit) ================= */
+  function findDay(tc, date) { var x = null; tc.week.days.forEach(function (d) { if (d.date === date) x = d; }); return x; }
+
+  /** #log/<date>[/<email>] : the day's blocks, or straight to the form when nothing is logged yet. */
+  function renderLog(date, email) {
+    date = date || S.boot.today;
+    var mine = !email || email === S.boot.user.email;
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiTimeCard', date, mine ? '' : email).then(function (tc) {
+      if (mine && tc.week.isCurrent) S.tc = tc;
+      var day = findDay(tc, date);
+      if (!day || !day.blocks.length) drawLog(date, null, mine ? '' : email, tc, day);
+      else drawDay(date, day, mine ? '' : email, tc);
+    }).catch(fail);
+  }
+
+  /** #blk/<date>/<entryId | new>[/<email>] : one block. */
+  function renderBlock(date, id, email) {
+    var mine = !email || email === S.boot.user.email, base = mine ? '' : '/' + encodeURIComponent(email);
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiTimeCard', date, mine ? '' : email).then(function (tc) {
+      var day = findDay(tc, date), e = null;
+      if (day && id !== 'new') day.blocks.forEach(function (b) { if (b.id === id) e = b; });
+      if (id !== 'new' && !e) { toast('That block was not found.'); go('#log/' + date + base); return; }
+      drawLog(date, e, mine ? '' : email, tc, day);
+    }).catch(fail);
+  }
+
+  /** Big Clock in / Clock out for my own today (Clock in starts a block, Clock out closes it). */
+  function clockHtml(tc) {
+    var op = tc.openBlock;
+    if (op && op.date === tc.today) {
+      return '<button type="button" class="btn primary big" id="clockOut">Clock out</button>' +
+        '<p class="muted small center" id="clockedSince">Clocked in since ' + esc(op.startLabel) + '</p>';
+    }
+    if (op) {
+      return '<div class="note warn" id="openOld">Your block from ' + esc(op.dateLabel) + ' (since ' + esc(op.startLabel) + ') is still open. ' +
+        '<a href="#blk/' + esc(op.date) + '/' + esc(op.id) + '">Add its end time</a> before you clock in again.</div>';
+    }
+    return '<button type="button" class="btn primary big" id="clockIn">Clock in</button>';
+  }
+  function wireClock() {
+    function done(r, msg) {
+      if (r.timeCard.week.isCurrent || !S.tc) S.tc = r.timeCard; else refreshMine();
+      var pts = applyPoints(r.points, '#timeCard');
+      toast(msg + pts, pts ? 4000 : 2500);
+      go('#home');
+    }
+    if ($('#clockIn')) $('#clockIn').onclick = function () {
+      var b = $('#clockIn'); b.disabled = true; primeAudio();
+      call('apiClockIn', '').then(function (r) { done(r, 'Clocked in at ' + r.entry.startLabel + '.'); })
+        .catch(function (err) { b.disabled = false; fail(err); });
+    };
+    if ($('#clockOut')) $('#clockOut').onclick = function () {
+      var b = $('#clockOut'); b.disabled = true; primeAudio();
+      call('apiClockOut').then(function (r) { done(r, 'Clocked out. ' + fmtH(r.entry.hours) + ' this block.'); })
+        .catch(function (err) { b.disabled = false; fail(err); });
+    };
+  }
+
+  function drawDay(date, day, email, tc) {
+    var base = email ? '/' + encodeURIComponent(email) : '', isOff = day.dayType && day.dayType !== 'Work';
+    var who = email ? tc.person.name : '';
+    var rows = day.blocks.map(function (b) {
+      var t = b.dayType !== 'Work' ? b.dayType + ' day' + (b.start ? ', ' + b.startLabel + ' - ' + b.endLabel : '') : blockRange(b);
+      var right = b.open ? '<span class="chip">Open</span>' : b.dayType === 'Work' || b.hours ? '<b>' + fmtH(b.hours) + '</b>' : '';
+      return '<a class="line blk" href="#blk/' + esc(date) + '/' + esc(b.id) + base + '" data-id="' + esc(b.id) + '">' +
+        '<div class="l"><span class="t">' + esc(t) + (b.edited ? ' <span class="muted small">edited</span>' : '') + '</span>' +
+        (b.note ? '<span class="s">' + esc(b.note) + '</span>' : '') + '</div>' +
+        '<span class="r">' + (b.overAllotment ? '<span class="chip warn">Over</span> ' : '') + right +
+        ' <span class="tap" aria-hidden="true">&#8250;</span></span></a>';
+    }).join('');
+    app.innerHTML = '<h1>' + esc(longDate(date)) + '</h1>' + (who ? '<p class="sub">' + esc(who) + '</p>' : '') +
+      (!email && date === tc.today && !isOff ? '<div class="card">' + clockHtml(tc) + '</div>' : '') +
+      '<div class="card"><div class="card-head"><h3>' + (isOff ? 'Day off' : 'Time blocks') + '</h3></div>' + rows +
+      '<div class="line total"><span>Day total</span><span class="r" id="dayTotal">' + fmtH(day.hours) + '</span></div></div>' +
+      (isOff ? '<p class="muted small">A ' + esc(day.dayType.toLowerCase()) + ' day is the only entry for the day. Tap it to change or delete it.</p>'
+             : '<a class="btn block big" id="addBlock" href="#blk/' + esc(date) + '/new' + base + '">+ Add block</a>' +
+               '<p class="muted small">Tap a block to change or delete it.</p>') +
+      '<a class="btn block" href="#week/' + esc(date) + base + '">Back to the week</a>';
+    wireClock();
+  }
+
+  function drawLog(date, e, email, tc, day) {
+    var F = { date: date, dayType: e ? e.dayType : 'Work', start: e ? e.start : '', end: e ? e.end : '',
+              note: e ? e.note : '', source: 'Manual' };
+    var who = email ? tc.person.name : '', base = email ? '/' + encodeURIComponent(email) : '';
+    var others = day ? day.blocks.filter(function (b) { return !e || b.id !== e.id; }) : [];
+    var adding = !e && others.length > 0, showTypes = !others.length;
+    var clock = !e && !email && date === tc.today && !others.length;
+    app.innerHTML = '<h1>' + (e ? 'Change time' : adding ? 'Add a block' : 'Log time') + (who ? ' for ' + esc(who) : '') + '</h1>' +
+      (adding ? '<p class="sub">' + esc(longDate(date)) + ' \u00b7 ' + fmtH(day.hours) + ' so far</p>' : '') +
+      (clock ? '<div class="card">' + clockHtml(tc) + '<p class="muted small center">or enter the times below</p></div>' : '') +
+      '<form id="logForm" class="card" autocomplete="off">' +
+      '<label class="field" for="fDate">Date</label><input type="date" id="fDate" value="' + esc(F.date) + '">' +
+      (showTypes ? '<label class="field">Day type</label><div class="seg" id="fType">' + S.boot.dayTypes.map(function (t) {
+        return '<button type="button" data-t="' + esc(t) + '" class="' + (t === F.dayType ? 'on' : '') + '">' + esc(t) + '</button>';
+      }).join('') + '</div>' : '') +
+      '<div class="grid2"><div><label class="field" for="fStart">Start</label><input type="time" id="fStart" value="' + esc(F.start) + '"></div>' +
+      '<div><label class="field" for="fEnd">End</label><input type="time" id="fEnd" value="' + esc(F.end) + '"></div></div>' +
+      '<label class="field" for="fNote">Label (optional)</label><input type="text" id="fNote" maxlength="500" placeholder="office, field, Fryeburg&#x2026; never codes or passwords" value="' + esc(F.note) + '">' +
+      '<div class="spread" style="margin-top:12px"><span>Hours</span><span class="hours" id="fHours">-</span></div>' +
+      (e ? '<label class="field" for="fReason">Reason for the change (required)</label><input type="text" id="fReason" maxlength="300" placeholder="Example: forgot to log my start">' : '') +
+      '<div id="offWarn"></div>' +
+      '<button type="submit" class="btn primary big" id="saveBtn" style="margin-top:14px">Save</button>' +
+      '</form>' +
+      (e ? '<div class="actions"><button class="btn" id="histBtn">History</button><button class="btn danger" id="delBtn">Delete this ' +
+        (e.dayType === 'Work' ? 'block' : 'day') + '</button></div><div id="hist"></div>' : '') +
+      (others.length ? '<a class="btn block" href="#log/' + esc(date) + base + '">Back to the day</a>'
+                     : '<p class="muted small" style="margin-top:12px">Split day? Save this block, then add the next one. The day total adds them up.</p>');
+
+    var typeBtns = $all('#fType button');
+    function curType() { var b = $('#fType button.on'); return b ? b.getAttribute('data-t') : F.dayType; }
+    function remainingFor(type) {
+      if (email || !S.tc || (type !== 'Sick' && type !== 'Vacation')) return null;
+      if (String($('#fDate').value).slice(0, 4) !== String(S.tc.timeOff.year)) return null;
+      return S.tc.timeOff[type === 'Sick' ? 'sick' : 'vacation'].remaining;
+    }
+    function update() {
+      var s = toMin($('#fStart').value), en = toMin($('#fEnd').value), t = curType();
+      var h = '-';
+      if (s !== null && en !== null && en > s) h = fmtH((en - s) / 60); // hours = end minus start (no unpaid break)
+      else if (t !== 'Work' && s === null && en === null) h = 'day off';
+      else if (e && e.open && s !== null && en === null) h = 'open';
+      $('#fHours').textContent = h;
+      var rem = remainingFor(t), changingInto = !e || e.dayType !== t;
+      $('#offWarn').innerHTML = (rem !== null && rem <= 0 && changingInto)
+        ? '<div class="note warn">You have no ' + t.toLowerCase() + ' days left this year. You can still save; it will be flagged for Doug and Duane.</div>' : '';
+    }
+    typeBtns.forEach(function (b) {
+      b.onclick = function () { typeBtns.forEach(function (x) { x.classList.toggle('on', x === b); }); update(); };
+    });
+    ['fStart', 'fEnd', 'fDate'].forEach(function (id) { $('#' + id).addEventListener('input', update); $('#' + id).addEventListener('change', update); });
+    if (clock) wireClock();
+    update();
+
+    $('#logForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var t = curType();
+      var input = { entryId: e ? e.id : '', email: email || '', date: $('#fDate').value, dayType: t, start: $('#fStart').value,
+                    end: $('#fEnd').value, note: $('#fNote').value, source: F.source,
+                    reason: e ? $('#fReason').value : '' };
+      if (e && input.reason.trim().length < 3) {
+        // allow a no-op save without a reason; otherwise ask for one
+        var same = e.date === input.date && e.dayType === t && e.start === input.start && e.end === input.end &&
+                   !e.breakMin && e.note === input.note.trim();
+        if (!same) { toast('Please say why you are changing this entry.', 4000); $('#fReason').focus(); return; }
+      }
+      var rem = remainingFor(t);
+      if (rem !== null && rem <= 0 && (!e || e.dayType !== t)) {
+        if (!window.confirm('You have ' + Math.max(0, rem) + ' ' + t.toLowerCase() + ' days left this year. Save anyway? It will be flagged for Doug and Duane.')) return;
+      }
+      var btn = $('#saveBtn'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      if (!email) primeAudio();
+      call('apiSaveEntry', input).then(function (r) {
+        if (!email) { if (r.timeCard.week.isCurrent || !S.tc) S.tc = r.timeCard; else refreshMine(); }
+        glow(btn);
+        var pts = email ? '' : applyPoints(r.points, '#timeCard');
+        toast((r.warning || (r.unchanged ? 'No changes.' : r.created ? 'Saved.' : 'Change saved.')) + pts, r.warning ? 7000 : pts ? 4000 : 2500);
+        go(email ? '#log/' + r.entry.date + '/' + encodeURIComponent(email) : (r.entry && r.entry.date === S.boot.today ? '#home' : '#log/' + r.entry.date));
+      }).catch(function (err) { btn.disabled = false; btn.textContent = 'Save'; fail(err); });
+    };
+    if (e) {
+      $('#histBtn').onclick = function () {
+        call('apiEntryHistory', e.id).then(function (h) {
+          $('#hist').innerHTML = '<div class="card"><h3>History</h3>' + h.map(function (x) {
+            return '<div class="line"><div class="l"><span class="t">' + esc(x.action) + (x.field && x.field !== '(all)' ? ': ' + esc(x.field) : '') +
+              (x.oldValue || x.newValue ? ' <span class="muted small">' + esc(x.oldValue) + ' &#8594; ' + esc(x.newValue) + '</span>' : '') + '</span>' +
+              '<span class="s">' + esc(x.at) + ' by ' + esc(x.by) + (x.reason ? ' &#183; "' + esc(x.reason) + '"' : '') + '</span></div></div>';
+          }).join('') + '</div>';
+        }).catch(fail);
+      };
+      $('#delBtn').onclick = function () {
+        var what = e.dayType === 'Work' ? 'block' : 'day';
+        var reason = window.prompt('Why are you deleting this ' + what + '? (required)');
+        if (reason === null) return;
+        if (reason.trim().length < 3) { toast('A reason is required.'); return; }
+        call('apiDeleteEntry', e.id, reason).then(function (r) {
+          if (!email) refreshMine();
+          toast('Deleted.' + (email ? '' : applyPoints(r.points)));
+          go('#log/' + date + base);
+        }).catch(fail);
+      };
+    }
+  }
+  function refreshMine() { call('apiTimeCard', S.boot.today, '').then(function (tc) { S.tc = tc; }).catch(function () {}); }
+
+  /* ================= More ================= */
+  function renderMore() {
+    var u = S.boot.user;
+    app.innerHTML = '<h1>More</h1>' +
+      '<div class="card"><h3>My account</h3><div class="line"><div class="l"><span class="t">' + esc(u.name) + '</span>' +
+      '<span class="s">' + esc(u.email) + '</span></div><span class="r"><span class="chip">' + esc(u.tier || 'No tier') + '</span></span></div>' +
+      '<p class="muted small">Signed in with your personal link. Keep the link from your invite email; don\'t forward it.</p>' +
+      '<button class="btn block" id="forget">Sign out on this phone</button></div>' +
+      (S.points ? '<a class="drill" id="drillPoints" href="#points"><span>My points</span><span class="val">' +
+        (S.points.enabled ? esc(S.points.balance) + ' pts' : 'off') + '</span></a>' : '') +
+      (u.isModerator ? '<div class="card"><h3>Moderator</h3>' +
+        '<a class="drill" href="#mod-users"><span>Users and invites</span><span class="val"></span></a>' +
+        '<a class="drill" href="#mod-time"><span>Everyone\'s time</span><span class="val"></span></a>' +
+        '<a class="drill" href="#mod-timeoff"><span>Time off</span><span class="val"></span></a>' +
+        '<a class="drill" href="#mod-points"><span>Points (everyone)</span><span class="val"></span></a>' +
+        '<a class="drill" id="drillRewards" href="#mod-rewards"><span>Rewards and point rules</span><span class="val"></span></a>' +
+        '<a class="drill" href="#mod-settings"><span>Settings and reminders</span><span class="val"></span></a></div>' : '') +
+      '<p class="muted small ver" id="moreVer">' + esc(S.boot.app.name) + ' ' + esc(S.boot.app.version) + '</p>';
+    $('#forget').onclick = function () {
+      if (!window.confirm('Sign out on this phone? You will need the link from your invite email to get back in.')) return;
+      lsDel('key'); S.key = ''; S.boot = null; denied('NOT_INVITED: Signed out on this phone.');
+    };
+  }
+
+  /* ================= Moderator: users ================= */
+  function tierSelect(id, val) {
+    return '<select id="' + id + '">' + S.boot.tiers.map(function (t) {
+      return '<option' + (t === val ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('') + '</select>';
+  }
+  function renderModUsers() {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModUsers').then(function (d) {
+      app.innerHTML = '<h1>Users</h1>' +
+        (d.appUrlSet ? '' : '<div class="note warn">Set APP_URL in Settings before inviting (invite emails need the app link).</div>') +
+        '<button class="btn primary block" id="showInvite">+ Invite user</button>' +
+        '<form id="inviteForm" class="card hidden" style="margin-top:12px" autocomplete="off"><h3>Invite someone</h3>' +
+        '<label class="field" for="iEmail">Google / Gmail address</label><input type="email" id="iEmail" required>' +
+        '<label class="field" for="iName">Name</label><input type="text" id="iName" required>' +
+        '<label class="field" for="iPhone">Phone (optional)</label><input type="tel" id="iPhone">' +
+        '<div class="grid2"><div><label class="field" for="iTier">Tier</label>' + tierSelect('iTier', 'Helper') + '</div>' +
+        '<div><label class="field" for="iHire">Hire date (optional)</label><input type="date" id="iHire"></div></div>' +
+        '<p class="muted small">Hire date can be left blank and added any time later (blank counts as under 5 years). Role: Tech. Only Doug and Duane are moderators (never a bot). Clicking Invite adds them and emails their personal link.</p>' +
+        '<button class="btn primary big" type="submit" id="inviteBtn">Invite (sends email)</button></form>' +
+        '<div class="card" style="margin-top:12px">' + d.users.map(function (u) {
+          var st = !u.active ? '<span class="chip">Off</span>' : u.status === 'Invited' ? '<span class="chip warn">Invited</span>' : '<span class="chip solid">Active</span>';
+          return '<a class="line" href="#mod-user/' + encodeURIComponent(u.email) + '"><div class="l"><span class="t">' + esc(u.name) +
+            (u.isModerator ? ' <span class="muted small">(moderator)</span>' : '') + '</span><span class="s">' + esc(u.email) + ' &#183; ' +
+            esc(u.tier || 'no tier') + (u.active && !u.loggedToday ? ' &#183; nothing logged today' : '') + '</span></div><span class="r">' +
+            (u.hireDateMissing ? '<span class="chip warn hire-missing">Hire date missing</span> ' : '') + st + '</span></a>';
+        }).join('') + '</div>';
+      $('#showInvite').onclick = function () { $('#inviteForm').classList.toggle('hidden'); };
+      $('#inviteForm').onsubmit = function (ev) {
+        ev.preventDefault();
+        var input = { email: $('#iEmail').value, name: $('#iName').value, phone: $('#iPhone').value, tier: $('#iTier').value, hireDate: $('#iHire').value };
+        if (!window.confirm('Invite ' + input.name + ' (' + input.email + ')? This sends them an email with their personal link.')) return;
+        var b = $('#inviteBtn'); b.disabled = true;
+        call('apiModInvite', input).then(function (r) { toast('Invited. Email sent to ' + r.user.email + '.', 4000); renderModUsers(); })
+          .catch(function (err) { b.disabled = false; fail(err); });
+      };
+    }).catch(fail);
+  }
+
+  function renderModUser(email) {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModUsers').then(function (d) {
+      var u = d.users.filter(function (x) { return x.email === email; })[0];
+      if (!u) { app.innerHTML = '<div class="card">User not found.</div>'; return; }
+      app.innerHTML = '<h1>' + esc(u.name) + '</h1><p class="sub">' + esc(u.email) + (u.isModerator ? ' &#183; moderator' : ' &#183; tech') + '</p>' +
+        '<form id="uForm" class="card" autocomplete="off">' +
+        '<label class="field" for="uName">Name</label><input type="text" id="uName" value="' + esc(u.name) + '">' +
+        '<label class="field" for="uPhone">Phone</label><input type="tel" id="uPhone" value="' + esc(u.phone) + '">' +
+        '<div class="grid2"><div><label class="field" for="uTier">Tier</label>' + tierSelect('uTier', u.tier) + '</div>' +
+        '<div><label class="field" for="uHire">Hire date</label><input type="date" id="uHire" value="' + esc(u.hireDate) + '"></div></div>' +
+        (u.hireDateMissing ? '<div class="note warn" id="hireMissing">Hire date missing. Until it is entered, this person gets the under-5-years vacation allotment. You can add it any time.</div>' : '') +
+        '<label class="field">Access</label><div class="seg" id="uActive"><button type="button" data-v="yes" class="' + (u.active ? 'on' : '') + '"' +
+        '>Active</button><button type="button" data-v="no" class="' + (u.active ? '' : 'on') + '"' + (u.isModerator ? ' disabled' : '') + '>Turned off</button></div>' +
+        '<button class="btn primary big" type="submit" style="margin-top:14px">Save</button></form>' +
+        '<div class="card"><h3>Sign-in link</h3><p class="muted small">' +
+        (u.hasLink ? 'Link sent ' + esc(u.keyIssuedOn) + ' (' + u.inviteCount + ' total). Resending makes the old link stop working.' : 'No link sent yet.') +
+        (u.firstSeen ? ' First signed in ' + esc(u.firstSeen) + '.' : ' Has not signed in yet.') + '</p>' +
+        '<button class="btn block" id="resend">' + (u.hasLink ? 'Resend invite' : 'Send invite link') + '</button></div>' +
+        '<a class="btn block" href="#week/' + esc(S.boot.today) + '/' + encodeURIComponent(u.email) + '">View / fix their time</a>' +
+        '<p class="muted small" style="margin-top:12px">Invited by ' + esc(u.invitedBy) + ' ' + esc(u.invitedOn) + '. Last seen ' + esc(u.lastSeen || 'never') + '.</p>';
+      $all('#uActive button').forEach(function (b) {
+        b.onclick = function () { $all('#uActive button').forEach(function (x) { x.classList.toggle('on', x === b); }); };
+      });
+      $('#uForm').onsubmit = function (ev) {
+        ev.preventDefault();
+        var on = $('#uActive button.on').getAttribute('data-v') === 'yes';
+        call('apiModUpdateUser', u.email, { name: $('#uName').value, phone: $('#uPhone').value, tier: $('#uTier').value,
+          hireDate: $('#uHire').value, active: on }).then(function (r) { toast(r.unchanged ? 'No changes.' : 'Saved.'); go('#mod-users'); }).catch(fail);
+      };
+      $('#resend').onclick = function () {
+        if (!window.confirm('Email ' + u.email + ' a new sign-in link?' + (u.hasLink ? ' Their old link will stop working.' : ''))) return;
+        call('apiModResendInvite', u.email).then(function (r) { toast('Sent to ' + r.sentTo + '.', 4000); renderModUser(email); }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  /* ================= Moderator: everyone's time ================= */
+  function renderModTime(weekOf) {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModTimeOverview', weekOf || '').then(function (d) {
+      var w = d.week;
+      var head = '<tr><th>Name</th>' + w.dates.map(function (x) { return '<th' + (x.isToday ? ' style="text-decoration:underline"' : '') + '>' + esc(x.dow.charAt(0)) + '<br>' + x.dayNum + '</th>'; }).join('') + '<th>Total</th></tr>';
+      var rows = d.people.map(function (p) {
+        return '<tr><td><a href="#week/' + esc(w.start) + '/' + encodeURIComponent(p.email) + '">' + esc(p.name) + '</a>' +
+          (p.missingToday ? '<br><span class="chip warn">Missing today</span>' : '') + (p.flaggedThisYear ? '<br><span class="chip warn">' + p.flaggedThisYear + ' over</span>' : '') + '</td>' +
+          p.days.map(function (x) {
+            if (!x.dayType) return '<td class="muted">-</td>';
+            var v = x.dayType === 'Work' ? String(x.hours) : x.dayType.charAt(0);
+            return '<td><a href="#log/' + esc(x.date) + '/' + encodeURIComponent(p.email) + '">' + esc(v) + (x.flagged ? '!' : '') + (x.edited ? '*' : '') + '</a></td>';
+          }).join('') + '<td><b>' + p.totalHours + '</b></td></tr>';
+      }).join('');
+      app.innerHTML = '<h1>Everyone\'s time</h1>' +
+        '<div class="card"><div class="card-head"><a class="btn small" href="#mod-time/' + esc(w.prev) + '">&#8249;</a><h3>' + esc(w.label) + '</h3>' +
+        '<a class="btn small" href="#mod-time/' + esc(w.next) + '">&#8250;</a></div><div class="scroll"><table class="grid">' + head + rows + '</table></div>' +
+        '<p class="muted small">Hours per day. S / V / H = Sick, Vacation, Holiday. ! = past allotment. * = edited. Tap to open or fix.</p></div>' +
+        '<div class="card"><div class="card-head"><h3>Flagged time off</h3><span class="chip warn">' + d.flagged.length + '</span></div>' +
+        (d.flagged.length ? d.flagged.map(function (f) {
+          return '<a class="line" href="#log/' + esc(f.date) + '/' + encodeURIComponent(f.email) + '"><div class="l"><span class="t">' + esc(f.name) + '</span>' +
+            '<span class="s">Logged ' + esc(f.dayType) + ' ' + esc(f.dateLabel) + ' with none left</span></div><span class="r">Review</span></a>';
+        }).join('') : '<p class="muted">Nothing flagged.</p>') + '</div>';
+    }).catch(fail);
+  }
+
+  /* ================= Moderator: time off ================= */
+  function renderModTimeOff(year) {
+    year = Number(year) || Number(S.boot.today.slice(0, 4));
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModTimeOff', year).then(function (d) {
+      var df = d.defaults;
+      app.innerHTML = '<h1>Time off ' + d.year + '</h1>' +
+        '<div class="row" style="margin-bottom:12px"><a class="btn small" href="#mod-timeoff/' + (d.year - 1) + '">&#8249; ' + (d.year - 1) + '</a>' +
+        '<a class="btn small" href="#mod-timeoff/' + (d.year + 1) + '">' + (d.year + 1) + ' &#8250;</a>' +
+        '<button class="btn small primary" id="seed">Seed ' + d.year + '</button></div>' +
+        '<p class="muted small">Defaults: ' + df.sick + ' sick days, ' + df.vacation + ' vacation days, ' + df.tenureVacation + ' vacation days after ' +
+        df.tenureYears + ' years (from hire date). Holidays: ' + (df.holidays === '' ? 'no limit' : df.holidays) + '. Change them in Settings.</p>' +
+        d.people.map(function (p, i) {
+          var s = p.summary;
+          return '<div class="card"><div class="card-head"><h3>' + esc(p.name) + '</h3><span class="muted small">' + esc(p.tier) + '</span></div>' +
+            (p.hireDate ? '' : '<div class="note warn">Hire date missing (counted as under ' + df.tenureYears + ' years). <a href="#mod-user/' + encodeURIComponent(p.email) + '">Add it</a></div>') +
+            offLine('Sick', s.sick) + offLine('Vacation', s.vacation) + offLine('Holidays', s.holiday) +
+            '<details><summary class="linklike">Set allotment / adjust</summary>' +
+            '<form class="allot" data-i="' + i + '"><div class="grid2">' +
+            '<div><label class="field">Sick days</label><input type="number" step="0.5" min="0" name="sick" value="' + (s.allotment.sick.source === 'set' ? s.allotment.sick.base : '') + '" placeholder="default ' + esc(s.allotment.sick.base) + '"></div>' +
+            '<div><label class="field">Vacation days</label><input type="number" step="0.5" min="0" name="vac" value="' + (s.allotment.vacation.source === 'set' ? s.allotment.vacation.base : '') + '" placeholder="default ' + esc(s.allotment.vacation.base) + '"></div></div>' +
+            '<label class="field">Holidays (blank = default)</label><input type="number" step="1" min="0" name="hol" value="' + (s.allotment.holiday.source === 'set' ? s.allotment.holiday.base : '') + '">' +
+            '<button class="btn block" type="submit" style="margin-top:10px">Save allotment</button></form>' +
+            '<form class="adjust" data-i="' + i + '"><div class="grid2"><div><label class="field">Type</label><select name="type"><option>Vacation</option><option>Sick</option><option>Holiday</option></select></div>' +
+            '<div><label class="field">Change (days)</label><input type="number" step="0.5" name="change" placeholder="+1 or -1"></div></div>' +
+            '<label class="field">Reason (required)</label><input type="text" name="reason" maxlength="300" placeholder="Example: carried 1 day from last year">' +
+            '<button class="btn block" type="submit" style="margin-top:10px">Save adjustment</button></form>' +
+            (p.adjustments.length ? '<div class="muted small">' + p.adjustments.map(function (a) {
+              return esc(a.on) + ': ' + esc(a.type) + ' ' + (a.change > 0 ? '+' : '') + a.change + ' (' + esc(a.reason) + ', ' + esc(a.by) + ')';
+            }).join('<br>') + '</div>' : '') + '</details></div>';
+        }).join('') +
+        '<div class="card"><div class="card-head"><h3>Flagged</h3><span class="chip warn">' + d.flagged.length + '</span></div>' +
+        (d.flagged.length ? d.flagged.map(function (f) {
+          return '<a class="line" href="#log/' + esc(f.date) + '/' + encodeURIComponent(f.email) + '"><div class="l"><span class="t">' + esc(f.name) + '</span>' +
+            '<span class="s">' + esc(f.dayType) + ' ' + esc(f.dateLabel) + ' past the allotment</span></div><span class="r">Review</span></a>';
+        }).join('') : '<p class="muted">Nothing flagged.</p>') + '</div>';
+      $('#seed').onclick = function () {
+        if (!window.confirm('Write ' + d.year + ' allotments from the defaults for everyone who has none yet?')) return;
+        call('apiModSeedYear', d.year).then(function (r) { toast('Seeded ' + r.added.length + ' people.'); renderModTimeOff(d.year); }).catch(fail);
+      };
+      $all('form.allot').forEach(function (f) {
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          var p = d.people[+f.getAttribute('data-i')];
+          call('apiModSetAllotment', { email: p.email, year: d.year, sickDays: f.sick.value, vacationDays: f.vac.value, holidays: f.hol.value })
+            .then(function () { toast('Allotment saved.'); renderModTimeOff(d.year); }).catch(fail);
+        };
+      });
+      $all('form.adjust').forEach(function (f) {
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          var p = d.people[+f.getAttribute('data-i')];
+          call('apiModAdjust', { email: p.email, year: d.year, type: f.type.value, change: f.change.value, reason: f.reason.value })
+            .then(function () { toast('Adjustment saved.'); renderModTimeOff(d.year); }).catch(fail);
+        };
+      });
+    }).catch(fail);
+  }
+
+  /* ================= Moderator: settings ================= */
+  function renderModSettings() {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModSettings').then(function (d) {
+      var on = d.settings.filter(function (s) { return s.key === 'REMINDER_ENABLED'; })[0];
+      app.innerHTML = '<h1>Settings</h1>' +
+        '<div class="card"><div class="card-head"><h3>6 PM reminder email</h3><span class="chip ' + (/^yes$/i.test(on.value) ? 'solid' : '') + '">' + (/^yes$/i.test(on.value) ? 'On' : 'Off') + '</span></div>' +
+        '<p class="muted small">Emails active people who have nothing logged today (weekdays). Trigger installed: ' + (d.reminderTrigger ? 'yes' : 'no (run installReminderTrigger in the editor)') + '.</p>' +
+        '<button class="btn block" id="toggleRem">' + (/^yes$/i.test(on.value) ? 'Turn reminders off' : 'Turn reminders on') + '</button></div>' +
+        '<div class="card"><h3>All settings</h3>' + d.settings.map(function (s, i) {
+          return '<form class="setf" data-k="' + esc(s.key) + '"><label class="field">' + esc(s.key) + '</label>' +
+            '<div class="row"><input type="text" name="v" value="' + esc(s.value) + '" style="flex:1"><button class="btn small" type="submit">Save</button></div>' +
+            '<div class="muted small">' + esc(s.note) + '</div></form>';
+        }).join('') + '</div>' +
+        (d.dbUrl ? '<p class="muted small">Backend sheet (walkerelectric only): <a target="_blank" rel="noopener" href="' + esc(d.dbUrl) + '">Walker Electric App DB</a></p>' : '') +
+        '<p class="muted small" id="photoFolder">' + (d.photoFolderUrl ? 'Job photos (walkerelectric Drive): <a target="_blank" rel="noopener" href="' + esc(d.photoFolderUrl) + '">WES Job Photos</a>'
+          : 'The WES Job Photos folder is created in the walkerelectric Drive with the first photo.') + '</p>';
+      $('#toggleRem').onclick = function () {
+        call('apiModSaveSetting', 'REMINDER_ENABLED', /^yes$/i.test(on.value) ? 'No' : 'Yes').then(function () { toast('Saved.'); renderModSettings(); }).catch(fail);
+      };
+      $all('form.setf').forEach(function (f) {
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          call('apiModSaveSetting', f.getAttribute('data-k'), f.v.value).then(function (r) { toast(r.note || 'Saved.', r.note ? 5000 : 2000); }).catch(fail);
+        };
+      });
+    }).catch(fail);
+  }
+
+  /** A form field by name (works the same in every browser). */
+  function fld(f, name) { return $('[name="' + name + '"]', f); }
+
+  /* ================= My points (v0.7): only my own numbers ================= */
+  function renderPoints() {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiPoints').then(function (p) {
+      S.points = p; drawPill();
+      var k = p.streak.count;
+      var tiers = p.tiers.map(function (t) {
+        var can = p.redemptionsEnabled && p.available >= t.points;
+        return '<div class="line tierline"><div class="l"><span class="t">' + esc(t.reward) + '</span><span class="s">' + esc(t.points) + ' points' +
+          (p.available < t.points ? ' &#183; ' + esc(t.points - p.available) + ' to go' : '') + '</span></div>' +
+          (p.redemptionsEnabled ? '<span class="r"><button type="button" class="btn small redeem" data-id="' + esc(t.id) + '"' + (can ? '' : ' disabled') +
+            '>Request</button></span>' : '') + '</div>';
+      }).join('');
+      var reqs = (p.redemptions || []).map(function (r) {
+        return '<div class="line"><div class="l"><span class="t">' + esc(r.reward) + ' (' + esc(r.points) + ' pts)</span><span class="s">' +
+          esc(r.status) + ' &#183; ' + esc(r.requestedAt) + (r.note ? ' &#183; ' + esc(r.note) : '') + '</span></div>' +
+          (r.status === 'Requested' ? '<span class="r"><button type="button" class="btn small cancelreq" data-id="' + esc(r.id) + '">Cancel</button></span>' : '') + '</div>';
+      }).join('');
+      app.innerHTML = '<h1>My points</h1><p class="sub">Only you see your points. There are no rankings.</p>' +
+        (p.enabled ? '' : '<div class="note warn" id="pointsOff">Points are turned off right now.</div>') +
+        '<div class="card bigpts"><div class="ptsbig"><span class="ptsval" id="myBalance">' + esc(p.balance) + '</span><span class="u">points</span></div>' +
+        '<div class="muted">Lifetime ' + esc(p.lifetime) + (p.held ? ' &#183; ' + esc(p.held) + ' held for a request' : '') + '</div>' +
+        '<div class="streak" id="myStreak">' + (k ? '&#128293; ' + esc(k) + '-day streak' : 'No streak yet') +
+        (p.streak.grace ? ' &#183; ' + esc(plural(p.streak.graceLeft, 'grace day')) + ' left this month' : '') + '</div></div>' +
+        '<div class="card"><h3>Rewards</h3>' + (p.redemptionsEnabled ? '' :
+          '<div class="note" id="trackingOnly">Tracking only for now: your points are counted and kept. ' + esc(S.boot.app.contactNames) + ' will turn on reward requests later.</div>') +
+        (tiers || '<p class="muted">No rewards set yet.</p>') + '</div>' +
+        (reqs ? '<div class="card"><h3>My requests</h3>' + reqs + '</div>' : '') +
+        '<div class="card"><h3>How points work</h3>' + p.rules.filter(function (r) { return r.key !== 'STREAK_GRACE_PER_MONTH'; }).map(function (r) {
+          return '<div class="line"><div class="l"><span class="t">' + esc(r.label) + '</span></div><span class="r">+' + esc(r.value) + '</span></div>';
+        }).join('') + '<p class="muted small">Log a Work day on the same day you worked it (backdating earns nothing). Sick, vacation and holidays never break a streak. ' +
+          esc(plural(p.streak.grace, 'missed workday')) + ' a month is forgiven. Points come only from saved entries and slips.' +
+          (p.startDate ? ' Counting since ' + esc(p.startDate) + '.' : '') + '</p></div>' +
+        '<div class="card"><h3>History</h3>' + (p.history.length ? p.history.map(function (x) {
+          return '<div class="line"><div class="l"><span class="t">' + esc(x.label) + '</span><span class="s">' + esc(x.at) + '</span></div>' +
+            '<span class="r">' + (x.pts > 0 ? '+' : '') + esc(x.pts) + '</span></div>';
+        }).join('') : '<p class="muted">Nothing yet. Log today\'s time today for your first point.</p>') + '</div>' +
+        '<label class="toggle card" for="soundOn"><span>Sound when I earn points</span><input type="checkbox" id="soundOn"' + (muted() ? '' : ' checked') + '></label>';
+      $('#soundOn').onchange = function () { if (this.checked) lsDel('mute'); else lsSet('mute', '1'); toast(this.checked ? 'Sound on.' : 'Sound off.'); };
+      $all('.redeem').forEach(function (b) {
+        b.onclick = function () {
+          var t = p.tiers.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
+          if (!t || !window.confirm('Request ' + t.reward + ' for ' + t.points + ' points? ' + S.boot.app.contactNames + ' will approve it.')) return;
+          b.disabled = true;
+          call('apiRedeem', t.id).then(function () { toast('Requested. Your points are held until it is approved.', 4000); renderPoints(); })
+            .catch(function (err) { b.disabled = false; fail(err); });
+        };
+      });
+      $all('.cancelreq').forEach(function (b) {
+        b.onclick = function () {
+          call('apiCancelRedeem', b.getAttribute('data-id')).then(function () { toast('Request cancelled.'); renderPoints(); }).catch(fail);
+        };
+      });
+    }).catch(fail);
+  }
+
+  /* ================= Moderator: points, plain table sorted by name (no ranking) ================= */
+  function renderModPoints() {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModPoints').then(function (d) {
+      app.innerHTML = '<h1>Points</h1><p class="sub">Sorted by name. For admin only: techs see only their own numbers.</p>' +
+        (d.enabled ? '' : '<div class="note warn">Points are off (POINTS_ENABLED = No, or no start date). Run setup() once after updating.</div>') +
+        '<div class="card"><div class="scroll"><table class="grid" id="modPtsTable"><tr><th>Name</th><th>Points</th><th>Lifetime</th><th>Streak</th></tr>' +
+        d.people.map(function (x) {
+          return '<tr><td>' + esc(x.name) + '</td><td><b>' + esc(x.balance) + '</b></td><td>' + esc(x.lifetime) + '</td><td>' + esc(x.streak) + '</td></tr>';
+        }).join('') + '</table></div>' + (d.startDate ? '<p class="muted small">Counting since ' + esc(d.startDate) + '.</p>' : '') + '</div>' +
+        '<form class="card" id="adjForm" autocomplete="off"><h3>Adjust points</h3>' +
+        '<label class="field" for="adjWho">Person</label><select id="adjWho">' + d.people.map(function (x) {
+          return '<option value="' + esc(x.email) + '">' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+        '<label class="field" for="adjPts">Points (+ or -)</label><input type="number" id="adjPts" step="1" placeholder="5 or -5">' +
+        '<label class="field" for="adjWhy">Reason (required)</label><input type="text" id="adjWhy" maxlength="200" placeholder="Example: logged on time, phone was dead">' +
+        '<button class="btn primary block" type="submit" style="margin-top:12px">Save adjustment</button>' +
+        '<p class="muted small">Every adjustment is kept in the points history and the Log.</p></form>' +
+        '<a class="btn block" href="#mod-rewards">Rewards and point rules</a>';
+      $('#adjForm').onsubmit = function (ev) {
+        ev.preventDefault();
+        call('apiModAdjustPoints', $('#adjWho').value, $('#adjPts').value, $('#adjWhy').value)
+          .then(function () { toast('Points adjusted.'); renderModPoints(); }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  /* ================= Moderator: rewards, point rules, requests (dial it in from the phone) ================= */
+  function renderModRewards() {
+    app.innerHTML = '<div class="loading">Loading&#x2026;</div>';
+    call('apiModRewards').then(function (d) {
+      function tierForm(t) {
+        return '<form class="tierf" data-id="' + esc(t.id) + '" autocomplete="off"><div class="grid2">' +
+          '<div><label class="field">Points</label><input type="number" name="pts" min="1" step="1" value="' + esc(t.points) + '"></div>' +
+          '<div><label class="field">Rough $ value</label><input type="number" name="val" min="0" step="1" value="' + esc(t.estValue == null ? '' : t.estValue) + '"></div></div>' +
+          '<label class="field">Reward</label><input type="text" name="reward" maxlength="80" value="' + esc(t.reward) + '">' +
+          '<label class="toggle"><span>Active (techs can see it)</span><input type="checkbox" name="active"' + (t.active ? ' checked' : '') + '></label>' +
+          '<div class="actions"><button class="btn primary" type="submit">Save</button><button class="btn tup" type="button" aria-label="Move up">&#8593;</button>' +
+          '<button class="btn tdown" type="button" aria-label="Move down">&#8595;</button><button class="btn danger trm" type="button">Remove</button></div></form>';
+      }
+      app.innerHTML = '<h1>Rewards and point rules</h1><p class="sub">Changes apply going forward. Points already given stay.</p>' +
+        '<div class="card"><div class="card-head"><h3>Reward requests</h3><span class="chip ' + (d.redemptionsEnabled ? 'solid' : '') + '" id="redeemState">' +
+          (d.redemptionsEnabled ? 'On' : 'Tracking only') + '</span></div>' +
+        '<p class="muted small">' + (d.redemptionsEnabled ? 'Techs can request a reward when they have the points. You approve each one.'
+          : 'Points are counted and shown, but nobody can request a reward yet.') + '</p>' +
+        '<button class="btn block" id="toggleRedeem">' + (d.redemptionsEnabled ? 'Back to tracking only' : 'Turn on reward requests') + '</button></div>' +
+        '<div class="card"><h3>Reward tiers</h3><div id="tierList">' + (d.tiers.length ? d.tiers.map(tierForm).join('<hr>') : '<p class="muted">No tiers.</p>') + '</div></div>' +
+        '<form class="card" id="addTier" autocomplete="off"><h3>Add a reward</h3><div class="grid2">' +
+          '<div><label class="field" for="ntPts">Points</label><input type="number" id="ntPts" min="1" step="1"></div>' +
+          '<div><label class="field" for="ntVal">Rough $ value</label><input type="number" id="ntVal" min="0" step="1"></div></div>' +
+          '<label class="field" for="ntReward">Reward</label><input type="text" id="ntReward" maxlength="80" placeholder="Example: $100 gift card">' +
+          '<button class="btn primary block" type="submit" style="margin-top:12px">Add reward</button></form>' +
+        '<div class="card"><h3>Point rules</h3>' + d.rules.map(function (r) {
+          return '<form class="rulef" data-k="' + esc(r.key) + '"><label class="field">' + esc(r.label) + '</label><div class="row">' +
+            '<input type="number" name="v" min="0" step="1" value="' + esc(r.value) + '" style="flex:1"><button class="btn small" type="submit">Save</button></div>' +
+            '<div class="muted small">Default ' + esc(r.dflt) + '. 0 turns it off.</div></form>';
+        }).join('') +
+        '<form class="rulef" data-k="POINTS_HOLIDAYS"><label class="field">Company holidays (not required workdays)</label><div class="row">' +
+          '<input type="text" name="v" value="' + esc(d.holidays) + '" placeholder="2026-11-26, 2026-12-25" style="flex:1"><button class="btn small" type="submit">Save</button></div></form>' +
+        '<form class="rulef" data-k="POINTS_START_DATE"><label class="field">Points counted since</label><div class="row">' +
+          '<input type="date" name="v" value="' + esc(d.startDate) + '" style="flex:1"><button class="btn small" type="submit">Save</button></div></form>' +
+        '<p class="muted small">Nightly check (about 12:30 AM): ' + (d.trigger ? 'installed' : 'not installed, run setup() in the editor') + '.</p></div>' +
+        '<div class="card"><h3>Open requests</h3>' + (d.open.length ? d.open.map(function (r) {
+          return '<div class="req" data-id="' + esc(r.id) + '"><div class="line"><div class="l"><span class="t">' + esc(r.name) + ': ' + esc(r.reward) + '</span>' +
+            '<span class="s">' + esc(r.points) + ' pts &#183; ' + esc(r.status) + ' &#183; ' + esc(r.requestedAt) + '</span></div></div>' +
+            '<input type="text" class="rnote" maxlength="200" placeholder="Note (optional, no card numbers)"><div class="actions">' +
+            (r.status === 'Requested' ? '<button class="btn primary rdo" data-a="approve" type="button">Approve</button><button class="btn rdo" data-a="deny" type="button">Deny</button>'
+              : '<button class="btn primary rdo" data-a="fulfill" type="button">Mark given</button>') + '</div></div>';
+        }).join('') : '<p class="muted">None.</p>') +
+        (d.recent.length ? '<details><summary class="linklike">Past requests</summary>' + d.recent.map(function (r) {
+          return '<div class="muted small">' + esc(r.requestedAt) + ' ' + esc(r.name) + ': ' + esc(r.reward) + ' (' + esc(r.points) + ') ' + esc(r.status) + '</div>';
+        }).join('') + '</details>' : '') + '</div>';
+      $('#toggleRedeem').onclick = function () {
+        var to = d.redemptionsEnabled ? 'No' : 'Yes';
+        if (to === 'Yes' && !window.confirm('Turn on reward requests? Techs will see a Request button on rewards they can afford.')) return;
+        call('apiModSaveSetting', 'REDEMPTIONS_ENABLED', to).then(function () { toast('Saved.'); renderModRewards(); }).catch(fail);
+      };
+      $all('form.tierf').forEach(function (f) {
+        var id = f.getAttribute('data-id');
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          call('apiModSaveTier', { id: id, points: fld(f, 'pts').value, reward: fld(f, 'reward').value, estValue: fld(f, 'val').value, active: fld(f, 'active').checked })
+            .then(function () { toast('Reward saved.'); renderModRewards(); }).catch(fail);
+        };
+        $('.tup', f).onclick = function () { call('apiModMoveTier', id, -1).then(renderModRewards).catch(fail); };
+        $('.tdown', f).onclick = function () { call('apiModMoveTier', id, 1).then(renderModRewards).catch(fail); };
+        $('.trm', f).onclick = function () {
+          if (!window.confirm('Remove this reward? Requests already made keep their record.')) return;
+          call('apiModRemoveTier', id).then(function () { toast('Removed.'); renderModRewards(); }).catch(fail);
+        };
+      });
+      $('#addTier').onsubmit = function (ev) {
+        ev.preventDefault();
+        call('apiModSaveTier', { points: $('#ntPts').value, reward: $('#ntReward').value, estValue: $('#ntVal').value, active: true })
+          .then(function () { toast('Reward added.'); renderModRewards(); }).catch(fail);
+      };
+      $all('form.rulef').forEach(function (f) {
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          call('apiModSaveSetting', f.getAttribute('data-k'), fld(f, 'v').value).then(function () { toast('Saved. Applies going forward.'); renderModRewards(); }).catch(fail);
+        };
+      });
+      $all('.req').forEach(function (el) {
+        $all('.rdo', el).forEach(function (b) {
+          b.onclick = function () {
+            call('apiModDecideRedemption', el.getAttribute('data-id'), b.getAttribute('data-a'), $('.rnote', el).value)
+              .then(function () { toast('Saved.'); renderModRewards(); }).catch(fail);
+          };
+        });
+      });
+    }).catch(fail);
+  }
+
+  start();
+})();
+</script>
+
+</body>
+</html>
