@@ -1,0 +1,12 @@
+/* v1.0 offline: the sync status line under the header, the update banner, the "couldn't sync" list. */
+#syncline { position:sticky; top:56px; z-index:4; display:flex; align-items:center; gap:8px; padding:4px 12px; font-size:13px;
+  background:#fff; border-bottom:1px solid var(--line, #d0d0d0); color:#333; cursor:pointer; min-height:26px; }
+#syncline .dot { width:10px; height:10px; border-radius:50%; flex:none; background:#9e9e9e; }
+#syncline.sync-green .dot { background:#1e8e3e; }
+#syncline.sync-amber .dot { background:#f29900; }
+#syncline.sync-gray .dot { background:#9e9e9e; }
+#syncline.sync-red .dot { background:#d93025; }
+#syncline.sync-red { background:#fff4f4; }
+#updbar { position:sticky; top:82px; z-index:4; background:#000; color:#fff; text-align:center; font-weight:700; padding:10px 12px; cursor:pointer; }
+#syncproblems { max-width:720px; margin:12px auto 0; }
+#needsSignal h2 { margin-top:0; }
