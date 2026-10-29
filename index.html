@@ -2179,17 +2179,20 @@
         return '<div class="line tierline"><div class="l"><span class="t">' + esc(t.reward) + '</span><span class="s">' + esc(t.points) + ' points' +
           (p.available < t.points ? ' &#183; ' + esc(t.points - p.available) + ' to go' : '') + '</span></div>' +
           (p.redemptionsEnabled ? '<span class="r"><button type="button" class="btn small redeem" data-id="' + esc(t.id) + '"' + (can ? '' : ' disabled') +
-            '>Request</button></span>' : '') + '</div>';
+            '>Redeem</button></span>' : '') + '</div>';
       }).join('');
+      // v1.1: points come off when you ask; a denied or cancelled request gives them back.
+      var REQ_STATUS = { Requested: 'Requested &#183; waiting for review', Approved: 'Approved', Fulfilled: 'Given',
+                         Denied: 'Denied &#183; points returned', Cancelled: 'Cancelled &#183; points returned' };
       var reqs = (p.redemptions || []).map(function (r) {
-        return '<div class="line"><div class="l"><span class="t">' + esc(r.reward) + ' (' + esc(r.points) + ' pts)</span><span class="s">' +
-          esc(r.status) + ' &#183; ' + esc(r.requestedAt) + (r.note ? ' &#183; ' + esc(r.note) : '') + '</span></div>' +
+        return '<div class="line reqline"><div class="l"><span class="t">' + esc(r.reward) + ' (' + esc(r.points) + ' pts)</span><span class="s">' +
+          (REQ_STATUS[r.status] || esc(r.status)) + ' &#183; ' + esc(r.requestedAt) + (r.note ? ' &#183; ' + esc(r.note) : '') + '</span></div>' +
           (r.status === 'Requested' ? '<span class="r"><button type="button" class="btn small cancelreq" data-id="' + esc(r.id) + '">Cancel</button></span>' : '') + '</div>';
       }).join('');
       app.innerHTML = '<h1>My points</h1><p class="sub">Only you see your points. There are no rankings.</p>' +
         (p.enabled ? '' : '<div class="note warn" id="pointsOff">Points are turned off right now.</div>') +
         '<div class="card bigpts"><div class="ptsbig"><span class="ptsval" id="myBalance">' + esc(p.balance) + '</span><span class="u">points</span></div>' +
-        '<div class="muted">Lifetime ' + esc(p.lifetime) + (p.held ? ' &#183; ' + esc(p.held) + ' held for a request' : '') + '</div>' +
+        '<div class="muted">Lifetime ' + esc(p.lifetime) + (p.held ? ' &#183; ' + esc(p.held) + ' on an older request' : '') + '</div>' +
         '<div class="streak" id="myStreak">' + (k ? '&#128293; ' + esc(k) + '-day streak' : 'No streak yet') +
         (p.streak.grace ? ' &#183; ' + esc(plural(p.streak.graceLeft, 'grace day')) + ' left this month' : '') + '</div></div>' +
         '<div class="card"><h3>Rewards</h3>' + (p.redemptionsEnabled ? '' :
@@ -2210,15 +2213,24 @@
       $all('.redeem').forEach(function (b) {
         b.onclick = function () {
           var t = p.tiers.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
-          if (!t || !window.confirm('Request ' + t.reward + ' for ' + t.points + ' points? ' + S.boot.app.contactNames + ' will approve it.')) return;
+          if (!t) return;
+          var noSignal = 'Needs a signal to request a reward';
+          if (window.navigator && window.navigator.onLine === false) { toast(noSignal, 4000); return; } // never queued offline
+          if (!window.confirm('Use ' + t.points + ' points for ' + t.reward + '? Doug will be emailed.')) return;
           b.disabled = true;
-          call('apiRedeem', t.id).then(function () { toast('Requested. Your points are held until it is approved.', 4000); renderPoints(); })
-            .catch(function (err) { b.disabled = false; fail(err); });
+          call('apiRedeem', t.id).then(function (r) {
+            toast((r && r.deducted || t.points) + ' points taken off. Your request was sent to Doug.', 5000); renderPoints();
+          }).catch(function (err) {
+            b.disabled = false;
+            if (/^OFFLINE/.test(String(err && err.message || err))) { toast(noSignal, 4000); return; }
+            fail(err);
+          });
         };
       });
       $all('.cancelreq').forEach(function (b) {
         b.onclick = function () {
-          call('apiCancelRedeem', b.getAttribute('data-id')).then(function () { toast('Request cancelled.'); renderPoints(); }).catch(fail);
+          if (!window.confirm('Cancel this request? Your points come back.')) return;
+          call('apiCancelRedeem', b.getAttribute('data-id')).then(function () { toast('Request cancelled. Points returned.', 3000); renderPoints(); }).catch(fail);
         };
       });
     }).catch(fail);
@@ -2266,7 +2278,7 @@
       app.innerHTML = '<h1>Rewards and point rules</h1><p class="sub">Changes apply going forward. Points already given stay.</p>' +
         '<div class="card"><div class="card-head"><h3>Reward requests</h3><span class="chip ' + (d.redemptionsEnabled ? 'solid' : '') + '" id="redeemState">' +
           (d.redemptionsEnabled ? 'On' : 'Tracking only') + '</span></div>' +
-        '<p class="muted small">' + (d.redemptionsEnabled ? 'Techs can request a reward when they have the points. You approve each one.'
+        '<p class="muted small">' + (d.redemptionsEnabled ? 'Techs can request a reward when they have the points. The points come off right away and Doug gets an email. Deny gives them back.'
           : 'Points are counted and shown, but nobody can request a reward yet.') + '</p>' +
         '<button class="btn block" id="toggleRedeem">' + (d.redemptionsEnabled ? 'Back to tracking only' : 'Turn on reward requests') + '</button></div>' +
         '<div class="card"><h3>Reward tiers</h3><div id="tierList">' + (d.tiers.length ? d.tiers.map(tierForm).join('<hr>') : '<p class="muted">No tiers.</p>') + '</div></div>' +
@@ -2287,7 +2299,7 @@
         '<p class="muted small">Nightly check (about 12:30 AM): ' + (d.trigger ? 'installed' : 'not installed, run setup() in the editor') + '.</p></div>' +
         '<div class="card"><h3>Open requests</h3>' + (d.open.length ? d.open.map(function (r) {
           return '<div class="req" data-id="' + esc(r.id) + '"><div class="line"><div class="l"><span class="t">' + esc(r.name) + ': ' + esc(r.reward) + '</span>' +
-            '<span class="s">' + esc(r.points) + ' pts &#183; ' + esc(r.status) + ' &#183; ' + esc(r.requestedAt) + '</span></div></div>' +
+            '<span class="s">' + esc(r.points) + ' pts (already taken off) &#183; ' + esc(r.status) + ' &#183; ' + esc(r.requestedAt) + '</span></div></div>' +
             '<input type="text" class="rnote" maxlength="200" placeholder="Note (optional, no card numbers)"><div class="actions">' +
             (r.status === 'Requested' ? '<button class="btn primary rdo" data-a="approve" type="button">Approve</button><button class="btn rdo" data-a="deny" type="button">Deny</button>'
               : '<button class="btn primary rdo" data-a="fulfill" type="button">Mark given</button>') + '</div></div>';
@@ -2297,7 +2309,7 @@
         }).join('') + '</details>' : '') + '</div>';
       $('#toggleRedeem').onclick = function () {
         var to = d.redemptionsEnabled ? 'No' : 'Yes';
-        if (to === 'Yes' && !window.confirm('Turn on reward requests? Techs will see a Request button on rewards they can afford.')) return;
+        if (to === 'Yes' && !window.confirm('Turn on reward requests? Techs will see a Redeem button on rewards they can afford.')) return;
         call('apiModSaveSetting', 'REDEMPTIONS_ENABLED', to).then(function () { toast('Saved.'); renderModRewards(); }).catch(fail);
       };
       $all('form.tierf').forEach(function (f) {
@@ -2328,8 +2340,10 @@
       $all('.req').forEach(function (el) {
         $all('.rdo', el).forEach(function (b) {
           b.onclick = function () {
-            call('apiModDecideRedemption', el.getAttribute('data-id'), b.getAttribute('data-a'), $('.rnote', el).value)
-              .then(function () { toast('Saved.'); renderModRewards(); }).catch(fail);
+            var a = b.getAttribute('data-a');
+            if (a === 'deny' && !window.confirm('Deny this request? The points go back to them and they get an email.')) return;
+            call('apiModDecideRedemption', el.getAttribute('data-id'), a, $('.rnote', el).value)
+              .then(function () { toast(a === 'deny' ? 'Denied. Points returned.' : a === 'approve' ? 'Approved. They get an email.' : 'Saved.', 3000); renderModRewards(); }).catch(fail);
           };
         });
       });

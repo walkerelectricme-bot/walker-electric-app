@@ -6,6 +6,8 @@
  *    A new version never swaps in while a form, slip or popup is open, so nothing being typed is lost; the outbox lives
  *    in IndexedDB and survives every update.
  *  - Registers the service worker (sw.js) so the app opens with no signal.
+ *  - v1.1b: a small, dismissible "install this app" tip in a phone browser tab (iPhone Safari: Share > Add to Home Screen;
+ *    Android Chrome: its Install prompt, or the menu hint). Never shown in the installed app.
  * No location is ever requested.
  */
 (function () {
@@ -93,6 +95,7 @@
     line.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onTapLine(); } });
     bar.addEventListener('click', applyUpdate);
     draw();
+    drawTip();
   }
   function draw() {
     if (!line) return;
@@ -211,6 +214,61 @@
     });
   }
 
+  /* ---------------- Install tip (v1.1b): only in a browser tab, never in the installed app ---------------- */
+  var TIP_KEY = 'wes1.installTipOff';
+  var installEvt = null, tipEl = null;
+  /**
+   * Pure: which tip to show. env: {ua, standalone (iOS navigator.standalone), displayStandalone (display-mode media),
+   * dismissed, canPrompt}. Returns '' (none), 'ios', 'android-install' (Chrome offered its install prompt) or 'android-hint'.
+   */
+  function installTip(env) {
+    if (!env || env.standalone || env.displayStandalone || env.dismissed) return '';
+    var ua = String(env.ua || '');
+    var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && env.touch);
+    if (ios) return 'ios';
+    if (/Android/.test(ua)) return env.canPrompt ? 'android-install' : 'android-hint';
+    return '';
+  }
+  function tipEnv() {
+    var dm = false;
+    try { dm = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); } catch (e) {}
+    return { ua: navigator.userAgent, standalone: navigator.standalone === true, displayStandalone: dm,
+             dismissed: lsGet(TIP_KEY) === '1', canPrompt: !!installEvt, touch: (navigator.maxTouchPoints || 0) > 1 };
+  }
+  function hideTip(forGood) {
+    if (forGood) lsSet(TIP_KEY, '1');
+    if (tipEl && tipEl.parentNode) tipEl.parentNode.removeChild(tipEl);
+    tipEl = null;
+  }
+  function drawTip() {
+    var kind = installTip(tipEnv());
+    if (tipEl && tipEl.getAttribute('data-kind') === kind) return;
+    hideTip(false);
+    var top = document.getElementById('topbar');
+    if (!kind || !top) return;
+    var msg = kind === 'ios' ? 'Install this app: tap Share, then Add to Home Screen. You\'ll paste your invite link once after installing.'
+      : kind === 'android-install' ? 'Install this app on your phone.'
+      : 'Install this app: Chrome menu &#x22EE; &gt; Install app.';
+    tipEl = el('div', { id: 'installtip', 'data-kind': kind, role: 'note' },
+      '<span class="msg">' + msg + '</span>' +
+      (kind === 'android-install' ? '<button type="button" class="btn small primary" id="installBtn">Install app</button>' : '') +
+      '<button type="button" class="x" id="installX" aria-label="Hide this tip">&#x2715;</button>');
+    var after = bar || line || top;
+    after.parentNode.insertBefore(tipEl, after.nextSibling);
+    tipEl.querySelector('#installX').onclick = function () { hideTip(true); };
+    var ib = tipEl.querySelector('#installBtn');
+    if (ib) ib.onclick = function () {
+      var e = installEvt; installEvt = null;
+      if (!e) { drawTip(); return; }
+      try {
+        e.prompt();
+        Promise.resolve(e.userChoice).then(function (c) { if (c && c.outcome === 'accepted') hideTip(true); else drawTip(); }, drawTip);
+      } catch (x) { drawTip(); }
+    };
+  }
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; drawTip(); });
+  window.addEventListener('appinstalled', function () { installEvt = null; hideTip(true); });
+
   /* ---------------- When to sync ---------------- */
   window.addEventListener('online', function () { engine.reachable = null; engine.syncNow({ pull: true }); draw(); });
   window.addEventListener('offline', function () { draw(); });
@@ -218,6 +276,7 @@
   setInterval(function () { engine.syncNow(); }, 60 * 1000);
   setInterval(draw, 15 * 1000);
 
-  window.WES_SHELL = { urlKey: urlKey, mount: mount, draw: draw, busy: busy, showUpdate: showUpdate, applyUpdate: applyUpdate, keyFrom: keyFrom };
+  window.WES_SHELL = { urlKey: urlKey, mount: mount, draw: draw, busy: busy, showUpdate: showUpdate, applyUpdate: applyUpdate, keyFrom: keyFrom,
+                    installTip: installTip, drawTip: drawTip };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();
