@@ -241,6 +241,27 @@
   #clockedSince { margin:8px 0 0; font-weight:700; color:var(--ink); }
   .t.clockedin { font-weight:900; }
   #addBlock { margin-bottom:10px; }
+  /* v1.2 materials picker: one card per line, big tap targets, suggestions inline under the item (no floating popups) */
+  .mat.matp { display:block; background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:8px; margin:8px 0; }
+  .matp .mtop { display:grid; grid-template-columns:1fr 44px 44px; gap:6px; align-items:center; }
+  .matp .mbot { display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .matp .mbot .mq { width:84px; text-align:center; font-size:18px; }
+  .matp .mbot .btn { min-width:48px; min-height:44px; font-size:22px; padding:0; }
+  .matp .mtop .btn { min-height:44px; padding:0; font-size:20px; }
+  .matp .munit { color:var(--muted); font-weight:700; font-size:15px; }
+  .msug { border:1.5px solid var(--ink); border-radius:10px; margin-top:6px; overflow:hidden; }
+  .msug .msg { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:48px; padding:8px 10px;
+    border:0; border-bottom:1px solid var(--soft); background:var(--paper); color:var(--ink); font:inherit; font-size:16px; text-align:left; }
+  .msug .msg:last-child { border-bottom:0; }
+  .msug .msg .t { font-weight:700; }
+  .msug .msg .s { color:var(--muted); font-size:13px; white-space:nowrap; }
+  .msug .msg.typed { background:var(--soft); }
+  .mchips { display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:2px 0 8px; }
+  .mchips .mchip { font-size:15px; padding:8px 12px; min-height:40px; font-family:inherit; color:var(--ink); }
+  .mrow { flex-wrap:wrap; gap:8px; margin:0 0 6px; }
+  #matKitList .line, #miIntoHits .line { width:100%; background:var(--paper); border:0; border-bottom:1px solid var(--soft); font:inherit; text-align:left; }
+  #matSaveKit { display:block; margin:8px 0 4px; }
+  .mlog .btn { flex:none; }
 </style>
 
   <link rel="stylesheet" href="css/shell.css">
@@ -1021,6 +1042,7 @@
         if ($('#jobs')) loadJobs(S.homeDay);
       }).catch(function (err) { btn.disabled = false; btn.textContent = 'Submit slip'; fail(err); });
     };
+    matPicker(e, detail, odd); // v1.2 mat-hook
   }
 
   /* ================= Tools dashboard ================= */
@@ -1059,11 +1081,13 @@
     return '<a class="tile soon" data-tool="' + esc(t.id) + '" href="#tool/' + esc(t.id) + '"><span class="badge">Coming soon</span>' + inner + '</a>';
   }
   function renderTools() {
+    matSyncTool(); // v1.2 mat-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
       '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
   }
   function renderToolPage(id, a, b) {
+    matSyncTool(); // v1.2 mat-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
     if (t.action.type === 'link') { go('#tools'); return; }
@@ -2167,6 +2191,484 @@
 
   /** A form field by name (works the same in every browser). */
   function fld(f, name) { return $('[name="' + name + '"]', f); }
+
+  /* ================= Materials picker (v1.2) =================
+   * Only HOW a tech picks materials changes. The slip form still sends [{qty, item}] from its .mat rows (.mq / .mi), so the
+   * === WES SLIP v1 === block is exactly as before. No unit is ever written to the slip: wire length is implied by the qty
+   * (a unit shows on screen only). Off (Settings MATERIALS_PICKER = off) = the form is exactly the v1.1 form.
+   * The list comes from apiMaterials (the phone app keeps a copy, so search works with no signal). Everyone can edit the
+   * list and kits (Tools > Materials); every change is logged with who made it and can be undone. */
+  var MAT = { data: null, at: 0, loading: null, ix: null };
+  var MAT_TOOL = { id: 'materials', title: 'Materials', subtitle: 'Parts list for slips: tidy names, kits, undo', icon: 'materials',
+    action: { type: 'page', render: function (a, b) { renderMaterials(a, b); } } };
+  ICONS.materials = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>';
+  function matOnBoot() { return !!(S.boot && S.boot.materialsPicker); }
+  function matSyncTool() {
+    var i = TOOLS.indexOf(MAT_TOOL), on = matOnBoot();
+    if (on && i < 0) TOOLS.push(MAT_TOOL);
+    if (!on && i >= 0) TOOLS.splice(i, 1);
+  }
+
+  /** The same "normal key" as Materials.gs matKey_ (a test checks both give the same result). */
+  function matKey(s) {
+    var t = ' ' + String(s == null ? '' : s).toLowerCase().replace(/[\u2018\u2019\u201c\u201d\u2033]/g, '"') + ' ';
+    t = t.replace(/(\d)\s*(?:''|"|inch(?:es)?\b|in\b)/g, '$1in ');
+    t = t.replace(/(\d+)\s*[-\/]\s*(\d+)/g, '$1/$2');
+    t = t.replace(/(\d)\s*(?:x|\*)\s*(\d)/g, '$1x$2');
+    t = t.replace(/(\d+)\s*(?:amps?|a)\b/g, '$1a');
+    t = t.replace(/\b(?:single|one|1)[\s-]*pole\b|\bs\.?p\.?\b/g, '1p').replace(/\b(?:two|double|2)[\s-]*pole\b|\bd\.?p\.?\b/g, '2p');
+    t = t.replace(/\b(\d)\s*-?\s*p\b/g, '$1p');
+    t = t.replace(/\bgfi\b/g, 'gfci').replace(/\b(?:brkr|bkr|brk)s?\b/g, 'breaker').replace(/\b(?:rcpt|recep|recept)s?\b/g, 'receptacle');
+    t = t.replace(/[^a-z0-9\/.\s]/g, ' ').replace(/(^|[^0-9])\.|\.(?![0-9])/g, '$1 ');
+    return t.split(/\s+/).filter(String).map(function (w) {
+      return w.length >= 4 && /[a-z]s$/.test(w) && !/ss$/.test(w) ? w.slice(0, -1) : w;
+    }).join(' ');
+  }
+  /** "Same as last visit": the customer guess finish lists use (Util.gs customerFromTitle_), as a key. */
+  function matCustomerKey(title) {
+    var t = String(title || '').replace(/^\s*finish list:\s*/i, '');
+    t = t.replace(/\s+-\s+.*$/, '');
+    if (t.indexOf(':') >= 0) t = t.slice(t.lastIndexOf(':') + 1);
+    t = t.replace(/^\s*\d+\s*\.\s*/, '').replace(/\?/g, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    return t.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  }
+  /** Shorthand: "12/2 x50", "12/2 *50", "50x 12/2" -> {qty: 50, rest: '12/2'}; anything else -> null. */
+  function matShorthand(text) {
+    var s = String(text || '').trim(), m;
+    if ((m = /^(.+?)\s+[x*](\d+(?:\.\d+)?)$/i.exec(s))) return { qty: Number(m[2]), rest: m[1].trim() };
+    if ((m = /^(\d+(?:\.\d+)?)[x*]\s+(.+)$/i.exec(s))) return { qty: Number(m[1]), rest: m[2].trim() };
+    return null;
+  }
+  /** Screen-only unit hint (never written to the slip). */
+  function matUnit(it, name) {
+    if (it && it.u) return it.u;
+    var n = String(name || '').toLowerCase();
+    if (/\b(box|connector|strap|clamp|fitting|coupling|adapter|adaptor|elbow|bushing|staple|cover|plate|nut|breaker)/.test(n)) return '';
+    return /\b(romex|nm-?b?|mc|uf|thhn|thwn|ser|seu|wire|cable|pvc|emt|conduit|flex|liquidtight|smurf)\b|\b\d+\/\d\b/.test(n) ? 'ft' : '';
+  }
+  function matFmtQty(n) { return String(Math.round(n * 100) / 100); }
+
+  function matPrep(d) {
+    var ix = { byId: {}, byKey: {}, star: {}, recent: {} };
+    (d.items || []).forEach(function (it) {
+      ix.byId[it.id] = it;
+      var keys = [matKey(it.n)].concat((it.a || []).map(matKey)).filter(String);
+      keys.forEach(function (k) { if (!ix.byKey[k]) ix.byKey[k] = it.id; });
+      it.toks = keys.join(' ').split(' ');
+      it.lk = keys[0] || '';
+    });
+    (d.stars || []).forEach(function (id) { ix.star[id] = true; });
+    (d.recent || []).forEach(function (id, i) { ix.recent[id] = 10 - i; });
+    MAT.ix = ix;
+  }
+  function matLoad(force) {
+    if (MAT.data && !force && Date.now() - MAT.at < 120000) return Promise.resolve(MAT.data);
+    if (MAT.loading) return MAT.loading;
+    MAT.loading = call('apiMaterials').then(function (d) {
+      MAT.loading = null; MAT.data = d; MAT.at = Date.now(); if (d && d.enabled) matPrep(d); return d;
+    }, function (err) { MAT.loading = null; if (MAT.data) return MAT.data; throw err; });
+    return MAT.loading;
+  }
+  function matItemFor(name) { var k = matKey(name); return k && MAT.ix && MAT.ix.byKey[k] ? MAT.ix.byId[MAT.ix.byKey[k]] : null; }
+  /** One query word against one item word: 2 = starts with it, 1 = one typo (words of 4+ letters), 0 = no. */
+  function matTok(q, w) {
+    if (w.indexOf(q) === 0) return 2;
+    if (q.length < 4 || /\d/.test(q)) return 0;
+    var p = w.slice(0, q.length), diff = 0, i;
+    if (p.length === q.length) { for (i = 0; i < q.length; i++) if (q.charAt(i) !== p.charAt(i)) diff++; if (diff <= 1) return 1; }
+    var a = w.slice(0, q.length - 1); // one letter too many in the query
+    for (i = 0; i < q.length; i++) if (q.slice(0, i) + q.slice(i + 1) === a) return 1;
+    return 0;
+  }
+  /** Up to `limit` items for what was typed: every word must match the start of a word of the name or a search word. */
+  function matSearch(text, limit) {
+    if (!MAT.data || !MAT.data.enabled) return [];
+    var sh = matShorthand(text), qk = matKey(sh ? sh.rest : text);
+    if (qk.replace(/\s/g, '').length < 2) return [];
+    var qt = qk.split(' '), out = [];
+    MAT.data.items.forEach(function (it) {
+      var s = 0;
+      for (var i = 0; i < qt.length; i++) {
+        var best = 0;
+        for (var j = 0; j < it.toks.length && best < 2; j++) best = Math.max(best, matTok(qt[i], it.toks[j]));
+        if (!best) return;
+        s += best;
+      }
+      if (it.lk.indexOf(qk) === 0) s += 3;
+      out.push({ it: it, s: s * 100 + (MAT.ix.star[it.id] ? 60 : 0) + (MAT.ix.recent[it.id] || 0) * 2 + Math.min(it.r, 40) });
+    });
+    out.sort(function (a, b) { return b.s - a.s || (a.it.n < b.it.n ? -1 : 1); });
+    return out.slice(0, limit || 5).map(function (x) { return x.it; });
+  }
+
+  /**
+   * Material rows with type-ahead, - / + and a star, inside `box`. The rows are the slip form's own .mat / .mq / .mi, so
+   * the form reads them exactly as before. Adding an item that is already there bumps its qty instead of a second line.
+   */
+  function matRowsWidget(box) {
+    function rows() { return $all('.mat', box); }
+    function qtyOf(r) { var v = $('.mq', r).value; return v === '' ? 1 : Number(v) || 0; }
+    function sameRow(name, skip) {
+      var k = matKey(name);
+      if (!k) return null;
+      return rows().filter(function (r) { return r !== skip && matKey($('.mi', r).value) === k; })[0] || null;
+    }
+    function refresh(r) {
+      var name = $('.mi', r).value, it = matItemFor(name), st = $('.mstar', r);
+      $('.munit', r).textContent = matUnit(it, name);
+      if (it) { st.classList.remove('hidden'); st.innerHTML = MAT.ix.star[it.id] ? '&#9733;' : '&#9734;'; st.setAttribute('aria-label', MAT.ix.star[it.id] ? 'Unstar' : 'Star'); }
+      else st.classList.add('hidden');
+    }
+    function hideSug(r) { var g = $('.msug', r); g.innerHTML = ''; g.classList.add('hidden'); }
+    function setItem(r, name, qty) {
+      var other = sameRow(name, r);
+      if (other) {
+        $('.mq', other).value = matFmtQty(qtyOf(other) + (qty || qtyOf(r)));
+        r.parentNode.removeChild(r);
+        refresh(other);
+        toast('Already on the slip: qty is now ' + $('.mq', other).value + '.', 2500);
+        return other;
+      }
+      $('.mi', r).value = name;
+      if (qty) $('.mq', r).value = matFmtQty(qty);
+      hideSug(r); refresh(r);
+      return r;
+    }
+    function showSug(r) {
+      var mi = $('.mi', r), text = mi.value, g = $('.msug', r);
+      var hits = matSearch(text, 5), sh = matShorthand(text), typed = (sh ? sh.rest : text).trim();
+      if (!hits.length || typed.length < 2) { hideSug(r); return; }
+      g.innerHTML = hits.map(function (it) {
+        return '<button type="button" class="msg" data-id="' + esc(it.id) + '"><span class="t">' + (MAT.ix.star[it.id] ? '&#9733; ' : '') + esc(it.n) + '</span>' +
+          '<span class="s">' + esc([matUnit(it, it.n), it.k ? 'used ' + it.k + 'x' : 'new'].filter(String).join(' \u00b7 ')) + '</span></button>';
+      }).join('') + '<button type="button" class="msg typed"><span class="t">Use &#8220;' + esc(typed) + '&#8221;</span></button>';
+      g.classList.remove('hidden');
+      $all('.msg', g).forEach(function (b) {
+        b.onmousedown = function (ev) { ev.preventDefault(); }; // keep the keyboard / focus while tapping (desktop)
+        b.onclick = function () {
+          r._picked = true;
+          var id = b.getAttribute('data-id'), it = id ? MAT.ix.byId[id] : null;
+          setItem(r, it ? it.n : typed, sh ? sh.qty : 0);
+          try { mi.blur(); } catch (e) {}
+        };
+      });
+    }
+    function wire(r) {
+      var mi = $('.mi', r), mq = $('.mq', r);
+      mi.oninput = function () { r._picked = false; showSug(r); refresh(r); };
+      mi.onfocus = function () { if (mi.value.trim().length >= 2) showSug(r); };
+      mi.onblur = function () {
+        setTimeout(function () {
+          if (!r.parentNode) return;
+          hideSug(r);
+          if (r._picked) return;
+          var sh = matShorthand(mi.value);
+          var hit = sh ? matItemFor(sh.rest) : null; // "12/2 x50": the words match a list item exactly -> its name
+          if (sh) setItem(r, hit ? hit.n : sh.rest, sh.qty); else refresh(r);
+        }, 350);
+      };
+      $('.mminus', r).onclick = function () { var q = qtyOf(r); mq.value = matFmtQty(q > 1 ? q - 1 : q); };
+      $('.mplus', r).onclick = function () { mq.value = matFmtQty(qtyOf(r) + 1); };
+      $('.rm', r).onclick = function () { r.parentNode.removeChild(r); };
+      $('.mstar', r).onclick = function () {
+        var it = matItemFor(mi.value);
+        if (!it) return;
+        var on = !MAT.ix.star[it.id];
+        matStar(it.id, on).then(function () { rows().forEach(refresh); });
+      };
+      refresh(r);
+    }
+    function rowHtml(item, qty) {
+      return '<div class="mat matp"><div class="mtop"><input type="text" class="mi" maxlength="120" placeholder="Item: type 2 letters" autocomplete="off"' +
+        ' autocapitalize="off" spellcheck="false" value="' + esc(item || '') + '">' +
+        '<button type="button" class="btn small mstar hidden" aria-label="Star">&#9734;</button>' +
+        '<button type="button" class="btn small rm" aria-label="Remove line">&#215;</button></div>' +
+        '<div class="msug hidden"></div>' +
+        '<div class="mbot"><button type="button" class="btn small mminus" aria-label="Less">&#8722;</button>' +
+        '<input type="number" class="mq" min="0" step="any" inputmode="decimal" placeholder="1" aria-label="Qty" value="' + esc(qty == null ? '' : qty) + '">' +
+        '<button type="button" class="btn small mplus" aria-label="More">+</button><span class="munit"></span></div></div>';
+    }
+    /** add(item, qty, {focus, noBump}): bumps the qty of a line with the same item, else fills an empty line, else adds one. */
+    function add(item, qty, o) {
+      o = o || {};
+      item = String(item || '');
+      if (item && !o.noBump) {
+        var same = sameRow(item, null);
+        if (same) { $('.mq', same).value = matFmtQty(qtyOf(same) + (Number(qty) || 1)); refresh(same); return same; }
+        var empty = rows().filter(function (r) { return !$('.mi', r).value.trim() && !$('.mq', r).value; })[0];
+        if (empty) { $('.mi', empty).value = item; $('.mq', empty).value = qty == null || qty === '' ? '' : matFmtQty(Number(qty)); refresh(empty); return empty; }
+      }
+      var div = document.createElement('div'); div.innerHTML = rowHtml(item, qty);
+      var r = div.firstChild; box.appendChild(r); wire(r);
+      if (o.focus) $('.mi', r).focus();
+      return r;
+    }
+    function lines() {
+      return rows().map(function (r) { return { qty: $('.mq', r).value, item: $('.mi', r).value }; })
+        .filter(function (l) { return l.item.trim(); });
+    }
+    return { add: add, lines: lines, refreshAll: function () { rows().forEach(refresh); } };
+  }
+
+  function matStar(id, on) {
+    var was = !!MAT.ix.star[id];
+    if (on) MAT.ix.star[id] = true; else delete MAT.ix.star[id];
+    return call('apiMatStar', id, on).then(function (r) {
+      MAT.data.stars = r.stars; MAT.ix.star = {}; r.stars.forEach(function (x) { MAT.ix.star[x] = true; });
+      toast(on ? 'Starred: it shows at the top of your materials.' : 'Unstarred.', 2000);
+    }, function (err) { if (was) MAT.ix.star[id] = true; else delete MAT.ix.star[id]; fail(err); });
+  }
+
+  /** The slip form hook: does nothing while the picker is off for this person (the form stays exactly as before). */
+  function matPicker(e, detail, odd) {
+    if (!matOnBoot()) return;
+    var box = $('#mats');
+    if (!box || box.getAttribute('data-picker')) return;
+    box.setAttribute('data-picker', '1');
+    var keep = $all('.mat', box).map(function (m) { return { qty: $('.mq', m).value, item: $('.mi', m).value }; });
+    box.innerHTML = '';
+    var w = matRowsWidget(box);
+    keep.forEach(function (l) { w.add(l.item, l.qty, { noBump: true }); });
+    var bar = document.createElement('div');
+    bar.id = 'matBar'; bar.innerHTML = '<p class="muted small" id="matLoading">Loading your materials&#x2026;</p>';
+    box.parentNode.insertBefore(bar, box);
+    var addBtn = $('#addMat');
+    addBtn.onclick = function () { w.add('', '', { focus: true, noBump: true }); };
+    var save = document.createElement('button');
+    save.type = 'button'; save.className = 'linklike small'; save.id = 'matSaveKit'; save.textContent = 'Save these lines as my kit';
+    addBtn.parentNode.insertBefore(save, addBtn.nextSibling);
+    save.onclick = function () {
+      var ls = w.lines();
+      if (!ls.length) { toast('Add some materials first.', 3000); return; }
+      var name = window.prompt('Name for this kit (only you see it):', '');
+      if (!name || !name.trim()) return;
+      call('apiMatKitSave', { name: name, shop: false, lines: ls.map(function (l) { return { n: l.item, q: l.qty }; }) }).then(function () {
+        toast('Kit saved: ' + name.trim() + '.', 3000); MAT.at = 0;
+      }).catch(fail);
+    };
+    matLoad().then(function (d) {
+      if (!$('#matBar')) return;
+      if (!d || !d.enabled) { bar.innerHTML = ''; return; }
+      w.refreshAll();
+      drawMatBar(bar, w, e, odd);
+    }).catch(function () {
+      if ($('#matLoading')) $('#matLoading').textContent = 'Suggestions show once the app has the materials list (open it once with signal). You can still type items.';
+    });
+  }
+
+  function drawMatBar(bar, w, e, odd) {
+    var d = MAT.data, ix = MAT.ix, ids = [];
+    (d.stars || []).concat(d.recent || []).forEach(function (id) { if (ix.byId[id] && ids.indexOf(id) < 0) ids.push(id); });
+    ids = ids.slice(0, 12);
+    var lv = null, visits = (d.lastVisit || {})[matCustomerKey(odd ? odd.title : e.title)] || [];
+    for (var i = 0; i < visits.length && !lv; i++) if (!(visits[i].eventId === (odd ? odd.id : e.id) && (odd || visits[i].date === e.date))) lv = visits[i];
+    var kits = d.kits || [];
+    bar.innerHTML = (ids.length ? '<div class="mchips" id="matChips">' + ids.map(function (id) {
+        return '<button type="button" class="chip mchip" data-id="' + esc(id) + '">' + (ix.star[id] ? '&#9733; ' : '') + esc(ix.byId[id].n) + '</button>';
+      }).join('') + '</div>' : '<p class="muted small" id="matHint">Type 2 letters in an item to see suggestions. Shorthand: 12/2 x50 = 50 of 12/2.</p>') +
+      '<div class="row mrow">' +
+      (kits.length ? '<button type="button" class="btn small" id="matKits">Kits (' + kits.length + ')</button>' : '') +
+      (lv ? '<button type="button" class="btn small" id="matLast">Same as last visit: ' + esc(lv.customer) + ', ' + esc(shortDate(lv.date)) +
+        ' (' + lv.lines.length + ')</button>' : '') + '</div><div id="matKitList" class="hidden"></div>';
+    $all('.mchip', bar).forEach(function (b) {
+      b.onclick = function () { var it = ix.byId[b.getAttribute('data-id')]; if (it) { w.add(it.n, 1); toast(it.n + ' added.', 1500); } };
+    });
+    if ($('#matLast')) $('#matLast').onclick = function () {
+      lv.lines.forEach(function (l) { w.add(l.n, l.q); });
+      toast(lv.lines.length + ' line' + (lv.lines.length === 1 ? '' : 's') + ' from the last visit added. Remove any you did not use.', 4000);
+    };
+    if ($('#matKits')) $('#matKits').onclick = function () {
+      var kl = $('#matKitList');
+      if (!kl.classList.contains('hidden')) { kl.classList.add('hidden'); return; }
+      kl.innerHTML = kits.map(function (k, i) {
+        return '<button type="button" class="line mkit" data-i="' + i + '"><span class="l"><span class="t">' + esc(k.n) + '</span><span class="s">' +
+          (k.shop ? 'Shop kit' : 'My kit') + ' &#183; ' + k.lines.length + ' items</span></span><span class="chip">Add</span></button>';
+      }).join('');
+      kl.classList.remove('hidden');
+      $all('.mkit', kl).forEach(function (b) {
+        b.onclick = function () {
+          var k = kits[+b.getAttribute('data-i')];
+          k.lines.forEach(function (l) { w.add(l.n, l.q); });
+          kl.classList.add('hidden');
+          toast(k.n + ': ' + k.lines.length + ' items added. Change or remove any line.', 3500);
+        };
+      });
+    };
+  }
+  function shortDate(ds) { var p = String(ds || '').split('-'); return p.length === 3 ? MON[+p[1] - 1] + ' ' + (+p[2]) : ds; }
+
+  /* ---------- Tools > Materials (everyone): cleanup, the list, kits, changes (undo) ---------- */
+  var MAT_TABS = [['cleanup', 'Cleanup'], ['list', 'List'], ['kits', 'Kits'], ['log', 'Changes']];
+  function matPage(tab, body) {
+    app.innerHTML = backLink('#tools', 'Tools') + '<h1>Materials</h1>' +
+      '<p class="sub">The parts list behind slip suggestions. Anyone can tidy it; every change is logged and can be undone. Past slips never change.</p>' +
+      '<div class="seg" id="matTabs">' + MAT_TABS.map(function (t) {
+        return '<button type="button" data-t="' + t[0] + '" class="' + (t[0] === tab ? 'on' : '') + '">' + t[1] + '</button>';
+      }).join('') + '</div><div id="matBody" style="margin-top:12px">' + (body || '<div class="loading">Loading&#x2026;</div>') + '</div>';
+    $all('#matTabs button').forEach(function (b) { b.onclick = function () { go('#tool/materials/' + b.getAttribute('data-t')); }; });
+    return $('#matBody');
+  }
+  function renderMaterials(tab, sub) {
+    if (!matOnBoot()) { go('#tools'); return; }
+    tab = tab || 'cleanup';
+    if (tab === 'list') return matListPage(sub);
+    if (tab === 'kits') return matKitsPage(sub);
+    if (tab === 'log') return matLogPage();
+    return matCleanupPage();
+  }
+  function matAfter(r, msg) {
+    MAT.at = 0;
+    toast(msg, 4000);
+    return r;
+  }
+  function undoBtn(r) { return r && r.logId ? r.logId : ''; }
+
+  function matCleanupPage() {
+    var body = matPage('cleanup');
+    call('apiMatCleanup').then(function (c) {
+      if (!c.groups.length) { body.innerHTML = '<p class="muted" id="matClean">Nothing to tidy: no two items look like the same thing.</p>'; return; }
+      var g = c.groups[0];
+      body.innerHTML = '<div class="card" id="matGroup"><h3>These look like the same thing</h3>' +
+        '<p class="muted small">Keep which name? The others become search words for it. Past slips stay as they are.' +
+        (c.total > 1 ? ' (' + c.total + ' groups to look at)' : '') + '</p>' +
+        g.items.map(function (it) {
+          return '<label class="check"><input type="radio" name="keep" value="' + esc(it.id) + '"' + (it.id === g.keep ? ' checked' : '') + '>' +
+            '<span><span class="t">' + esc(it.n) + '</span><span class="s">used on ' + it.uses + ' slip line' + (it.uses === 1 ? '' : 's') + '</span></span></label>';
+        }).join('') +
+        '<button type="button" class="btn primary block" id="matMerge" style="margin-top:8px">Merge</button>' +
+        '<button type="button" class="btn block" id="matNotSame" style="margin-top:8px">Not the same</button></div>';
+      $('#matMerge').onclick = function () {
+        var keep = $('input[name="keep"]:checked', body).value, others = g.items.filter(function (i) { return i.id !== keep; });
+        this.disabled = true;
+        others.reduce(function (p, it) { return p.then(function () { return call('apiMatMerge', it.id, keep); }); }, Promise.resolve())
+          .then(function () { matAfter(null, 'Merged. Undo it under Changes if that was wrong.'); matCleanupPage(); }).catch(function (err) { fail(err); matCleanupPage(); });
+      };
+      $('#matNotSame').onclick = function () {
+        call('apiMatNotSame', g.items.map(function (i) { return i.id; })).then(function () { matAfter(null, 'OK, they stay separate.'); matCleanupPage(); }).catch(fail);
+      };
+    }).catch(function (err) { body.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
+
+  function matListPage(sub) {
+    var body = matPage('list');
+    call('apiMatAll').then(function (r) {
+      S.matAll = r.items;
+      if (sub) { var it = r.items.filter(function (x) { return x.id === sub; })[0]; if (it || sub === 'new') return matEditItem(body, it || null); }
+      body.innerHTML = '<input type="search" id="matQ" placeholder="Search the list" autocomplete="off" value="' + esc(S.matQ || '') + '">' +
+        '<a class="btn primary block" id="matNew" href="#tool/materials/list/new" style="margin-top:8px">+ Add an item</a><div id="matRows"></div>';
+      function draw() {
+        var q = matKey($('#matQ').value), shown = r.items.filter(function (it) {
+          return !q || q.split(' ').every(function (w) { return (matKey(it.n) + ' ' + it.a.map(matKey).join(' ')).split(' ').some(function (x) { return x.indexOf(w) === 0; }); });
+        });
+        S.matQ = $('#matQ').value;
+        $('#matRows').innerHTML = shown.slice(0, 25).map(function (it) {
+          return '<a class="line" href="#tool/materials/list/' + esc(it.id) + '"><span class="l"><span class="t">' + esc(it.n) + '</span><span class="s">' +
+            esc([it.mergedInto ? 'merged into ' + it.mergedInto : it.hidden ? 'hidden' : '', it.u, it.k ? 'used ' + it.k + 'x' : 'not used yet'].filter(String).join(' \u00b7 ')) +
+            '</span></span></a>';
+        }).join('') + (shown.length > 25 ? '<p class="muted small">' + (shown.length - 25) + ' more: search to narrow it down.</p>' : '') +
+          (!shown.length ? '<p class="muted" id="matNone">Nothing yet. Items are added when someone types them on a slip.</p>' : '');
+      }
+      $('#matQ').oninput = draw; draw();
+    }).catch(function (err) { body.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
+  function matEditItem(body, it) {
+    var units = (MAT.data && MAT.data.units) || ['ft', 'ea', 'box', 'roll', 'pkg', 'pr', 'bag', 'lb', 'gal', 'set'];
+    var merged = it && it.mergedInto;
+    body.innerHTML = '<a class="back" href="#tool/materials/list">&#8249; List</a>' +
+      '<form id="matItemForm" autocomplete="off"><label class="field" for="miName">Name (what goes on the slip)</label>' +
+      '<input type="text" id="miName" maxlength="120" value="' + esc(it ? it.n : '') + '"' + (merged ? ' disabled' : '') + '>' +
+      '<label class="field" for="miUnit">Unit (shown on the phone only, never on the slip)</label><select id="miUnit"><option value="">none</option>' +
+      units.map(function (u) { return '<option' + (it && it.u === u ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>' +
+      '<label class="field" for="miCat">Category (optional)</label><input type="text" id="miCat" maxlength="40" value="' + esc(it ? it.c : '') + '">' +
+      '<label class="field" for="miAl">Other names to find it by (one per line)</label><textarea id="miAl" rows="3">' + esc(it ? it.a.join('\n') : '') + '</textarea>' +
+      (it ? '<p class="muted small">' + esc((it.source === 'slip' ? 'Learned from a slip by ' : 'Added by ') + (it.by || '?')) +
+        (it.updatedBy ? ' &#183; last changed by ' + esc(it.updatedBy) : '') + '</p>' : '') +
+      (merged ? '<div class="note">Merged into ' + esc(it.mergedInto) + '. Undo the merge under Changes to bring it back.</div>'
+        : '<button type="submit" class="btn primary big" id="miSave">Save</button>') + '</form>' +
+      (it && !merged ? '<button type="button" class="btn block" id="miHide" style="margin-top:8px">' + (it.hidden ? 'Bring it back' : 'Hide from suggestions') + '</button>' +
+        '<label class="field" for="miInto" style="margin-top:12px">Merge into another item</label><input type="search" id="miInto" placeholder="Type the other item" autocomplete="off"><div id="miIntoHits"></div>' : '');
+    if (merged) return;
+    $('#matItemForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      call('apiMatSave', { id: it ? it.id : '', name: $('#miName').value, unit: $('#miUnit').value, category: $('#miCat').value,
+                           aliases: $('#miAl').value.split('\n') }).then(function (r) {
+        matAfter(r, r.unchanged ? 'No changes.' : r.unhidden ? 'That item was hidden; it is back now.' : 'Saved. Past slips stay as they were.');
+        go('#tool/materials/list');
+      }).catch(fail);
+    };
+    if (!it) return;
+    $('#miHide').onclick = function () {
+      call('apiMatHide', it.id, !it.hidden).then(function (r) { matAfter(r, it.hidden ? 'It is back in suggestions.' : 'Hidden from suggestions.'); go('#tool/materials/list'); }).catch(fail);
+    };
+    $('#miInto').oninput = function () {
+      var q = matKey(this.value), hits = !q ? [] : (S.matAll || []).filter(function (x) {
+        return x.id !== it.id && !x.hidden && !x.mergedInto && matKey(x.n).indexOf(q) >= 0;
+      }).slice(0, 5);
+      $('#miIntoHits').innerHTML = hits.map(function (x) {
+        return '<button type="button" class="line minto" data-id="' + esc(x.id) + '"><span class="l"><span class="t">' + esc(x.n) + '</span></span><span class="chip">Merge</span></button>';
+      }).join('');
+      $all('#miIntoHits .minto').forEach(function (b) {
+        b.onclick = function () {
+          if (!window.confirm('Merge "' + it.n + '" into "' + b.textContent.replace(/Merge$/, '') + '"? Past slips stay as they are.')) return;
+          call('apiMatMerge', it.id, b.getAttribute('data-id')).then(function (r) { matAfter(r, 'Merged. Undo it under Changes if that was wrong.'); go('#tool/materials/list'); }).catch(fail);
+        };
+      });
+    };
+  }
+
+  function matKitsPage(sub) {
+    var body = matPage('kits');
+    matLoad(true).then(function (d) {
+      var kits = d.kits || [];
+      if (sub) { var k = kits.filter(function (x) { return x.id === sub; })[0]; if (k || sub === 'new') return matEditKit(body, k || null); }
+      body.innerHTML = '<p class="muted small">A kit adds several items to a slip with one tap. Shop kits are for everyone; my kits only show for me.</p>' +
+        '<a class="btn primary block" id="kitNew" href="#tool/materials/kits/new">+ New kit</a>' +
+        (kits.length ? kits.map(function (k) {
+          return '<a class="line" href="#tool/materials/kits/' + esc(k.id) + '"><span class="l"><span class="t">' + esc(k.n) + '</span><span class="s">' +
+            (k.shop ? 'Shop kit' : 'My kit') + ' &#183; ' + k.lines.length + ' items</span></span></a>';
+        }).join('') : '<p class="muted" id="kitNone">No kits yet.</p>');
+    }).catch(function (err) { body.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
+  function matEditKit(body, k) {
+    body.innerHTML = '<a class="back" href="#tool/materials/kits">&#8249; Kits</a>' +
+      '<form id="kitForm" autocomplete="off"><label class="field" for="kName">Kit name</label><input type="text" id="kName" maxlength="60" value="' + esc(k ? k.n : '') + '">' +
+      (k ? '<p class="muted small">' + (k.shop ? 'Shop kit (everyone)' : 'My kit (only me)') + '</p>'
+         : '<label class="toggle" for="kShop"><span>Shop kit (everyone sees it)</span><input type="checkbox" id="kShop" checked></label>') +
+      '<label class="field">Items</label><div id="kmats"></div><button type="button" class="btn small" id="kAdd">+ Add item</button>' +
+      '<button type="submit" class="btn primary big" id="kSave" style="margin-top:12px">Save kit</button></form>' +
+      (k ? '<button type="button" class="btn block" id="kDel" style="margin-top:8px">Remove kit</button>' : '');
+    var w = matRowsWidget($('#kmats'));
+    (k ? k.lines : [{}]).forEach(function (l) { w.add(l.n || '', l.q == null ? '' : l.q, { noBump: true }); });
+    $('#kAdd').onclick = function () { w.add('', '', { focus: true, noBump: true }); };
+    $('#kitForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      call('apiMatKitSave', { id: k ? k.id : '', name: $('#kName').value, shop: k ? k.shop : $('#kShop').checked,
+                              lines: w.lines().map(function (l) { return { n: l.item, q: l.qty }; }) })
+        .then(function (r) { matAfter(r, 'Kit saved.'); go('#tool/materials/kits'); }).catch(fail);
+    };
+    if (k) $('#kDel').onclick = function () {
+      if (!window.confirm('Remove the kit "' + k.n + '"? You can undo it under Changes.')) return;
+      call('apiMatKitDelete', k.id).then(function (r) { matAfter(r, 'Kit removed.'); go('#tool/materials/kits'); }).catch(fail);
+    };
+  }
+
+  function matLogPage() {
+    var body = matPage('log');
+    call('apiMatLog').then(function (r) {
+      body.innerHTML = r.log.length ? '<p class="muted small">Newest first. Undo puts it back the way it was (past slips are never changed).</p>' +
+        r.log.map(function (l) {
+          return '<div class="line mlog"><span class="l"><span class="t">' + esc(l.summary) + '</span><span class="s">' + esc(l.by) + ' &#183; ' + esc(l.at) +
+            (l.undone ? ' &#183; undone by ' + esc(l.undoneBy) : '') + '</span></span>' +
+            (l.canUndo ? '<button type="button" class="btn small mundo" data-id="' + esc(l.id) + '">Undo</button>' : '') + '</div>';
+        }).join('') : '<p class="muted" id="logNone">No changes yet.</p>';
+      $all('.mundo', body).forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          call('apiMatUndo', b.getAttribute('data-id')).then(function (x) { matAfter(x, 'Undone.'); matLogPage(); }).catch(function (err) { b.disabled = false; fail(err); });
+        };
+      });
+    }).catch(function (err) { body.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
 
   /* ================= My points (v0.7): only my own numbers ================= */
   function renderPoints() {

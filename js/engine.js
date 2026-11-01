@@ -6,8 +6,8 @@
  *    changes still waiting in the outbox (timecore.js = the v0.9 rules). Writes (save / edit / delete a block, Clock in,
  *    Clock out) are checked with the same rules, put in the outbox with a client-made ID (UUID) and the phone time,
  *    and synced: right away when there is signal (so a server refusal shows like it did in v0.9), else later.
- *  - Jobs (7 days back to 14 ahead), Odds and Ends, finish lists, points: shown from the server when there is signal,
- *    from the phone's copy when there is not.
+ *  - Jobs (7 days back to 14 ahead), Odds and Ends, finish lists, points, the v1.2 materials list: shown from the server
+ *    when there is signal, from the phone's copy when there is not.
  *  - Everything else (slips, photos, work orders, moderator screens...): needs signal, with a clear message.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
@@ -118,7 +118,7 @@
       if (r[0]) self.meta = Object.assign(self.meta, r[0]);
       if (!self.meta.deviceId) self.meta.deviceId = uuid();
       self.outbox = r[1] || []; self.problems = r[2] || [];
-      return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'reads'].map(function (k) {
+      return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].map(function (k) {
         return self.store.get('kv', k).then(function (v) { if (v !== undefined) self.kv[k] = v; });
       }));
     }).then(function () { return self.saveMeta(); }).then(function () { return self; });
@@ -136,7 +136,7 @@
     if (self.meta.owner && self.meta.owner !== self.owner) {
       self.kv = {};
       self.meta.lastSync = 0; self.meta.lastFull = 0;
-      ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'reads'].forEach(function (k) { self.store.del('kv', k); });
+      ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].forEach(function (k) { self.store.del('kv', k); });
     }
     self.meta.owner = self.owner;
     return self.saveMeta();
@@ -353,7 +353,7 @@
   Engine.prototype.dropCaches = function () {
     var s = this.store;
     this.kv = {};
-    return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'reads'].map(function (k) { return s.del('kv', k); }));
+    return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].map(function (k) { return s.del('kv', k); }));
   };
 
   Engine.prototype.noteFailure = function (e) {
@@ -440,6 +440,7 @@
       if (s.jobs) w.push(self.setKv('jobs', { at: at, from: s.jobs.from, to: s.jobs.to, days: s.jobs.days }));
       if (s.odds) w.push(self.setKv('odds', { at: at, data: s.odds }));
       if (s.finish) w.push(self.setKv('finish', { at: at, data: s.finish }));
+      if (s.mats) w.push(self.setKv('mats', { at: at, data: s.mats })); // v1.2 materials picker list (search works with no signal)
       self.meta.lastFull = at; self.meta.lastSync = at;
       w.push(self.saveMeta());
       return Promise.all(w).then(function () { self.emit(); return s; });
@@ -457,7 +458,7 @@
   Engine.prototype.staleAll = function () {
     var self = this, r = self.reads();
     Object.keys(r).forEach(function (k) { r[k].at = 0; });
-    ['jobs', 'odds', 'finish', 'points'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
+    ['jobs', 'odds', 'finish', 'points', 'mats'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
   };
 
   /** cached: {at, data} or null. A fresh copy (or no signal) -> the copy; else the server, falling back to the copy. */
@@ -634,6 +635,10 @@
           return self.read(fn, args, cf, function (d) { self.remember(kf, d); });
         }
         case 'apiPoints': return self.read(fn, args, self.reads().points || null, function (d) { self.remember('points', d); });
+        // v1.2 materials picker: the list from the phone's copy when there is no signal (edits need signal)
+        case 'apiMaterials': return self.read(fn, args, self.reads().mats || (self.kv.mats ? { at: self.kv.mats.at, data: self.kv.mats.data } : null),
+          function (d) { self.remember('mats', d); },
+          'OFFLINE: No signal. Material suggestions show once this phone has the list (open the app once with signal).');
         default: return self.passthrough(fn, args);
       }
     });
