@@ -2,7 +2,8 @@
  * shell.js (v1.0 offline): runs before the v0.9 page script in the installable app (web/index.html).
  *  - Takes the personal key from ?k= (then hides it from the address bar) and keeps it on the phone.
  *  - Provides google.script.run for the unchanged page script, backed by the offline engine (engine.js).
- *  - Draws the thin sync status line under the header (tap = sync now) and the "New version, tap to refresh" banner.
+ *  - Draws the thin sync status line under the header (tap = sync now; v1.3: with slips waiting, it also opens the
+ *    Slips waiting to sync screen) and the "New version, tap to refresh" banner.
  *    A new version never swaps in while a form, slip or popup is open, so nothing being typed is lost; the outbox lives
  *    in IndexedDB and survives every update.
  *  - Registers the service worker (sw.js) so the app opens with no signal.
@@ -38,7 +39,8 @@
     put: function (a, b, c) { return store.put(a, b, c); },
     del: function (a, b) { return store.del(a, b); },
     all: function (a) { return store.all(a); },
-    clear: function (a) { return store.clear(a); }
+    clear: function (a) { return store.clear(a); },
+    isVolatile: function () { return !!(store && store.volatile); } // v1.3: memory only (private browsing): warn before relying on it
   };
   var engine = new WesEngine.Engine({
     store: window.WES_TEST_STORE || lazyStore,
@@ -104,9 +106,13 @@
     line.querySelector('.txt').textContent = s.text;
   }
   function onTapLine() {
-    if (engine.problems.length) { showProblems(); return; }
+    var slips = engine.mySlips().length;
+    if (engine.problems.length) showProblems();
+    // v1.3: slips waiting or needing attention: open the Slips waiting to sync screen (and try them now)
+    if (slips && location.hash !== '#tool/pending') location.hash = '#tool/pending';
+    if (engine.problems.length && !slips) return;
     engine.reachable = null;
-    engine.syncNow({ full: true, pull: true });
+    engine.syncNow({ full: true, pull: true, force: true });
     draw();
   }
   function opLabel(p) {
@@ -270,10 +276,12 @@
   window.addEventListener('appinstalled', function () { installEvt = null; hideTip(true); });
 
   /* ---------------- When to sync ---------------- */
-  window.addEventListener('online', function () { engine.reachable = null; engine.syncNow({ pull: true }); draw(); });
+  // v1.3: "force" = queued slips go up now, without waiting out their retry backoff (signal is back / the app was opened).
+  window.addEventListener('online', function () { engine.reachable = null; engine.syncNow({ pull: true, force: true }); draw(); });
   window.addEventListener('offline', function () { draw(); });
-  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') engine.syncNow({ pull: true }); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') engine.syncNow({ pull: true, force: true }); });
   setInterval(function () { engine.syncNow(); }, 60 * 1000);
+  setInterval(function () { if (engine.slipsDue()) engine.syncNow(); }, 10 * 1000); // v1.3: slip retries on their backoff (30 s, 2, 5, 15 min)
   setInterval(draw, 15 * 1000);
 
   window.WES_SHELL = { urlKey: urlKey, mount: mount, draw: draw, busy: busy, showUpdate: showUpdate, applyUpdate: applyUpdate, keyFrom: keyFrom,

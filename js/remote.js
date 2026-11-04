@@ -1,6 +1,6 @@
 /**
  * remote.js (v1.0 offline): how the phone reaches the back end. Swappable: anything with
- *   call(fn, args, key, opts) -> Promise<result>   (rejects with err.code: OFFLINE, ACCESS, BAD_LINK, BUSY, ...)
+ *   call(fn, args, key, opts) -> Promise<result>   (rejects with err.code: OFFLINE, ACCESS, SERVER (5xx), BAD_LINK, BUSY, ...)
  * works. AppsScriptRemote talks to the Apps Script data service (Api.gs doPost): POST, text/plain (no CORS preflight),
  * the personal key in the body, no cookies. A later FirebaseRemote would implement the same call().
  */
@@ -36,6 +36,8 @@
     });
     return Promise.race([p, t]).then(function (res) {
       clearTimeout(timer);
+      // v1.3: a Google server error page (5xx) is a "try again later", not a refusal (the offline slip queue retries it).
+      if (res && res.status >= 500) throw codedError('SERVER', 'The app server had a problem (' + res.status + '). It tries again by itself.');
       return res.text().then(function (txt) {
         var j;
         try { j = JSON.parse(txt); } catch (e) {

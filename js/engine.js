@@ -8,7 +8,13 @@
  *    and synced: right away when there is signal (so a server refusal shows like it did in v0.9), else later.
  *  - Jobs (7 days back to 14 ahead), Odds and Ends, finish lists, points, the v1.2 materials list: shown from the server
  *    when there is signal, from the phone's copy when there is not.
- *  - Everything else (slips, photos, work orders, moderator screens...): needs signal, with a clear message.
+ *  - v1.3 completed slips (jobs and Odds and Ends): saved on the phone FIRST (IndexedDB 'slips', the offline slip queue),
+ *    then sent: right away when there is signal (a refusal shows on the form like before), else later. Each slip has a
+ *    client-made ID (clientSlipId); the server keeps the first result for that ID (Api.gs slipOnce_), so a retry after a
+ *    lost reply never makes a second slip or SLIP: event. Network trouble / 5xx = retry with backoff (30 s, 2 min, 5 min,
+ *    then every 15 min); a refusal by the server = "Needs attention" with the server's message (no more retries until the
+ *    tech edits it or taps Sync now). The finish-list part of a slip goes up after the slip, with its own ID.
+ *  - Everything else (photos, work orders, moderator screens...): needs signal, with a clear message.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
  * tapped. Changes go up in batches (apiSync), oldest first; the server is idempotent on the client ID, so a retry after
@@ -30,6 +36,11 @@
   var BATCH = 25;
   var QUEUED_MSG = 'Saved on this phone. It syncs when you have signal.';
   var NEEDS_SIGNAL = 'OFFLINE: This needs signal. Your time card works without it; this screen opens again once you are back online.';
+  // v1.3 offline slip queue
+  var SLIP_BACKOFF_MS = [30 * 1000, 2 * 60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000]; // then 15 min, capped
+  var SLIP_RETRY = /^(OFFLINE|ACCESS|SERVER|BUSY|RETRY|SETUP)$/;
+  var SLIP_TIMEOUT_MS = 30000;
+  var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function clone(v) { return v === undefined || v === null ? v : JSON.parse(JSON.stringify(v)); }
@@ -65,11 +76,18 @@
     return localDs(d) === localDs(n) ? clock12(d) : MON[d.getMonth()] + ' ' + d.getDate() + ', ' + clock12(d);
   }
   /**
-   * s: {online, pending, problems, lastSync (ms or 0), now (ms), syncing}. Returns {state, text}:
+   * s: {online, pending, problems, attention, lastSync (ms or 0), now (ms), syncing}. Returns {state, text}:
    * green "Updated X min ago" | amber "N waiting to sync" | gray "Offline, last updated <time>" | red "N couldn't sync".
+   * v1.3: pending includes slips waiting in the slip queue; attention = slips the server refused ("N slips need attention").
    */
   function statusLine(s) {
     var now = s.now || Date.now();
+    if (s.attention > 0 && !(s.problems > 0)) {
+      return { state: 'red', text: s.attention + (s.attention === 1 ? ' slip needs' : ' slips need') + ' attention. Tap to see.' };
+    }
+    if (s.problems > 0 && s.attention > 0) {
+      return { state: 'red', text: (s.problems + s.attention) + ' changes couldn\'t sync. Tap to see.' };
+    }
     if (s.problems > 0) {
       return { state: 'red', text: s.problems + (s.problems === 1 ? ' change' : ' changes') + ' couldn\'t sync. Tap to see.' };
     }
@@ -101,6 +119,9 @@
     this.reachable = null;   // false after a network failure, until the next success or "online" event
     this.syncing = null; this.denied = null;
     this.ready = null;
+    this.slips = [];          // v1.3 offline slip queue (every person on this phone; mySlips() = mine)
+    this.slipBusy = {};       // cid -> true while that slip is on its way
+    this.slipListeners = [];  // fn(event, item, info) for slips finished or refused in the background
   }
 
   Engine.prototype.on = function (fn) { this.listeners.push(fn); };
@@ -113,11 +134,13 @@
     var self = this;
     if (self.ready) return self.ready;
     self.ready = self.store.open().then(function () {
-      return Promise.all([self.store.get('kv', 'meta'), self.store.all('outbox'), self.store.all('problems')]);
+      return Promise.all([self.store.get('kv', 'meta'), self.store.all('outbox'), self.store.all('problems'),
+        Promise.resolve().then(function () { return self.store.all('slips'); }).catch(function () { return []; })]);
     }).then(function (r) {
       if (r[0]) self.meta = Object.assign(self.meta, r[0]);
       if (!self.meta.deviceId) self.meta.deviceId = uuid();
       self.outbox = r[1] || []; self.problems = r[2] || [];
+      self.slips = (r[3] || []).sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
       return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].map(function (k) {
         return self.store.get('kv', k).then(function (v) { if (v !== undefined) self.kv[k] = v; });
       }));
@@ -145,8 +168,8 @@
   Engine.prototype.pendingCount = function () { return this.myOps().length; };
 
   Engine.prototype.status = function () {
-    return statusLine({ online: this.likelyOnline(), pending: this.pendingCount(), problems: this.problems.length,
-                        lastSync: this.meta.lastSync, now: this.nowMs(), syncing: !!this.syncing });
+    return statusLine({ online: this.likelyOnline(), pending: this.pendingCount() + this.slipsWaiting().length, problems: this.problems.length,
+                        attention: this.slipsAttention().length, lastSync: this.meta.lastSync, now: this.nowMs(), syncing: !!this.syncing });
   };
 
   /* ---------------- My time entries: server copy + the outbox replayed on top ---------------- */
@@ -379,8 +402,12 @@
     opts = opts || {};
     if (!self.key) return Promise.resolve();
     if (self.syncing) return self.syncing;
+    var loopFailed = false;
     self.syncing = self.init().then(function () { return self.syncLoop(opts, 0); })
+      .catch(function () { loopFailed = true; })
+      .then(function () { return self.flushSlips(opts); }) // v1.3: slips waiting in the slip queue (never rejects)
       .then(function () {
+        if (loopFailed) return;
         var due = opts.full || !self.meta.lastFull || self.nowMs() - self.meta.lastFull > FULL_EVERY_MS;
         if (due && self.reachable !== false && !self.denied) return self.pullFull().catch(function () {});
       })
@@ -525,7 +552,7 @@
     if (self.denied) return Promise.reject(self.denied);
     var have = self.kv.boot && self.timeData() && self.kv.boot.user && normEmail(self.kv.boot.user.email) === normEmail(self.me());
     if (have) {
-      setTimeout(function () { self.syncNow(); }, 0);
+      setTimeout(function () { self.syncNow({ force: true }); }, 0); // app open: slips waiting go up now (no backoff wait)
       return Promise.resolve(self.composeBoot());
     }
     if (!self.likelyOnline()) {
@@ -582,6 +609,249 @@
     });
   };
 
+  /* ---------------- v1.3 offline slip queue ---------------- */
+
+  /** Wait before the next try after `attempts` failed tries: 30 s, 2 min, 5 min, then 15 min (capped). */
+  function slipBackoff(attempts) {
+    var i = Math.min(Math.max(attempts || 1, 1), SLIP_BACKOFF_MS.length) - 1;
+    return SLIP_BACKOFF_MS[i];
+  }
+  /** 'retry' (no signal, timeout, 5xx, busy), 'denied' (the sign-in link stopped working) or 'rejected' (the server said no). */
+  function slipFailKind(e) {
+    var code = String(e && e.code || '');
+    if (SLIP_RETRY.test(code)) return 'retry';
+    if (DENIED.test(code)) return 'denied';
+    return 'rejected';
+  }
+  function cleanMsg(e) { return String(e && e.message || e || '').replace(/^Error:\s*/, '').replace(/^[A-Z_]+:\s*/, ''); }
+  function slipTarget(it) { return it.kind + ':' + (it.kind === 'oddSlip' ? it.oddId : (it.input.eventId || '') + '|' + (it.input.date || '')); }
+
+  Engine.prototype.mySlips = function () {
+    var o = this.owner;
+    return this.slips.filter(function (s) { return s.owner === o; });
+  };
+  Engine.prototype.slipsWaiting = function () { return this.mySlips().filter(function (s) { return s.status !== 'attention'; }); };
+  Engine.prototype.slipsAttention = function () { return this.mySlips().filter(function (s) { return s.status === 'attention'; }); };
+  Engine.prototype.slipById = function (cid) { return this.mySlips().filter(function (s) { return s.cid === cid; })[0] || null; };
+  /** The queued slip for a job on a day (or an odd job), if any. */
+  Engine.prototype.slipFor = function (eventId, date, oddId) {
+    return this.mySlips().filter(function (s) {
+      return oddId ? s.kind === 'oddSlip' && s.oddId === oddId : s.kind === 'slip' && s.input.eventId === eventId && s.input.date === date;
+    })[0] || null;
+  };
+  Engine.prototype.onSlip = function (fn) { this.slipListeners.push(fn); };
+  Engine.prototype.slipEmit = function (ev, it, info) {
+    this.slipListeners.forEach(function (f) { try { f(ev, it, info); } catch (e) {} });
+  };
+  Engine.prototype.slipsDue = function () {
+    var self = this, now = self.nowMs();
+    return self.slipsWaiting().some(function (s) { return !self.slipBusy[s.cid] && (s.nextAt || 0) <= now; });
+  };
+  Engine.prototype.slipSave = function (it) {
+    var self = this;
+    it.updatedAt = self.nowMs();
+    var i = self.slips.map(function (s) { return s.cid; }).indexOf(it.cid);
+    if (i >= 0) self.slips[i] = it; else self.slips.push(it);
+    return self.store.put('slips', clone(it));
+  };
+  Engine.prototype.slipDrop = function (cid) {
+    var self = this;
+    self.slips = self.slips.filter(function (s) { return s.cid !== cid; });
+    return self.store.del('slips', cid);
+  };
+
+  /**
+   * A completed slip from the form. Saved on the phone FIRST (so nothing is ever lost), then sent when there is signal.
+   * phoneOpts: {fin: finish-list follow-up (apiFinishFromSlip input) or null, ctx: what the queue screen and Edit need
+   * (title, place, the finish part of the form), replace: cid of the queued slip this one replaces (Edit)}.
+   * Resolves with the server's result (+ .finish) when it went up now, or {queued: true, cid, message} when it waits.
+   * Rejects only when the server refused it right away (the form is still open, like before) or the phone can't keep it.
+   */
+  Engine.prototype.queueSlip = function (kind, oddId, input, phoneOpts) {
+    var self = this;
+    phoneOpts = phoneOpts || {};
+    input = clone(input || {});
+    if (kind === 'oddSlip' && !oddId) return Promise.reject(err('Pick the odd job first.'));
+    var d = self.clock(), cid = uuid();
+    input.clientSlipId = cid;
+    input.clientApp = self.version;
+    input.phoneTime = d.toISOString();
+    var it = { cid: cid, seq: ++self.meta.seq, owner: self.owner, kind: kind, oddId: String(oddId || ''), input: input,
+               fin: phoneOpts.fin ? clone(phoneOpts.fin) : null, finCid: cid + '-f', ctx: clone(phoneOpts.ctx || {}), stage: 'slip',
+               status: 'pending', attempts: 0, nextAt: 0, lastError: '', lastTryAt: 0, createdAt: d.getTime(), updatedAt: d.getTime(),
+               result: null, edited: !!phoneOpts.replace };
+    // One slip per job and day (or odd job) in the queue: a new one (or an Edit) replaces the one waiting, never adds a second.
+    var target = slipTarget(it), old = self.mySlips().filter(function (s) {
+      return (phoneOpts.replace && s.cid === phoneOpts.replace) || (s.stage === 'slip' && slipTarget(s) === target);
+    });
+    if (old.length) it.edited = true; // it replaces a slip that was waiting: a refusal keeps it (Needs attention), nothing is lost
+    if (old.some(function (s) { return self.slipBusy[s.cid]; })) {
+      return Promise.reject(err('This slip is on its way to the office right now. Try again in a moment.'));
+    }
+    if (old.some(function (s) { return s.stage !== 'slip'; })) {
+      return Promise.reject(err('That slip already reached the office (only its finish-list part is waiting), so it can\'t be changed here. Open the job to replace it.'));
+    }
+    // Write first: the slip is on the phone before any network call. Then drop the one it replaces.
+    return self.slipSave(it).then(function () {
+      return Promise.all(old.map(function (s) { return self.slipDrop(s.cid); }));
+    }, function (e) {
+      self.slips = self.slips.filter(function (s) { return s.cid !== cid; });
+      throw err('This phone could not save the slip (' + cleanMsg(e) + '). Nothing was sent. Try again, or write it down.');
+    }).then(function () {
+      return self.saveMeta();
+    }).then(function () {
+      self.emit();
+      if (!self.isOnline() || self.denied) return self.queuedResult(it);
+      return self.sendSlip(it, { immediate: true }).then(function (o) {
+        if (o.state === 'done') return o.result;
+        if (o.state === 'rejected' && !it.edited) throw err(o.message);
+        if (o.state === 'rejected') throw err(o.message + ' It is kept in Slips waiting to sync (Needs attention) so you can fix it.');
+        return self.queuedResult(it);
+      });
+    });
+  };
+  Engine.prototype.queuedResult = function (it) {
+    var vol = !!(this.store && (this.store.volatile || (typeof this.store.isVolatile === 'function' && this.store.isVolatile())));
+    return { ok: true, queued: true, cid: it.cid, status: it.status, lastError: it.lastError,
+             message: SLIP_QUEUED_MSG + (vol ? ' This phone can\'t keep it if the app is closed (private browsing?): keep the app open until it syncs.' : ''),
+             volatile: vol };
+  };
+
+  /**
+   * One try for one queued slip (the slip, then its finish-list part). Resolves {state: done | retry | rejected | denied,
+   * result, message}; never rejects. done = the slip is on the server and out of the queue.
+   */
+  Engine.prototype.sendSlip = function (it, o) {
+    var self = this;
+    o = o || {};
+    if (self.slipBusy[it.cid]) return Promise.resolve({ state: 'retry', message: 'Already on its way.' });
+    self.slipBusy[it.cid] = true;
+    it.lastTryAt = self.nowMs();
+    self.emit();
+    var fail = function (e, stage) {
+      var kind = slipFailKind(e), msg = cleanMsg(e) || 'Not sent.';
+      it.attempts = (it.attempts || 0) + 1;
+      it.lastError = msg;
+      if (kind === 'retry') {
+        it.status = 'pending';
+        it.nextAt = self.nowMs() + slipBackoff(it.attempts);
+        return self.slipSave(it).then(function () { return { state: 'retry', message: msg, stage: stage }; });
+      }
+      if (stage === 'finish') {
+        // The slip itself is saved; only the finish-list part was refused (as before: "Finish list NOT updated").
+        it.finishError = msg;
+        return self.slipFinal(it, o).then(function () { return { state: 'done', result: self.slipResult(it) }; });
+      }
+      if (kind === 'rejected' && o.immediate && !it.edited) {
+        // The person is still on the form: the error shows there, like before, and the slip leaves the queue.
+        return self.slipDrop(it.cid).then(function () { return { state: 'rejected', message: msg }; });
+      }
+      it.status = 'attention';
+      it.nextAt = 0;
+      if (kind === 'denied') it.lastError = msg + ' (Open your personal link again, then tap Sync now.)';
+      return self.slipSave(it).then(function () {
+        if (!o.immediate) self.slipEmit('attention', clone(it), { message: it.lastError });
+        return { state: kind, message: it.lastError };
+      });
+    };
+    var step = it.stage === 'finish' ? Promise.resolve() : self.rcall(it.kind === 'oddSlip' ? 'apiOddSlip' : 'apiSubmitSlip',
+      it.kind === 'oddSlip' ? [it.oddId, it.input] : [it.input], SLIP_TIMEOUT_MS).then(function (r) {
+        it.result = r; it.stage = 'finish'; it.status = 'pending'; it.lastError = '';
+        if (!it.fin) return 'final';
+        return self.slipSave(it);
+      }, function (e) { throw { slipFail: e, stage: 'slip' }; });
+    var p = step.then(function (x) {
+      if (x === 'final') return self.slipFinal(it, o).then(function () { return { state: 'done', result: self.slipResult(it) }; });
+      if (!it.fin) return self.slipFinal(it, o).then(function () { return { state: 'done', result: self.slipResult(it) }; });
+      var fin = Object.assign({}, it.fin, { clientSlipId: it.finCid, clientApp: self.version });
+      return self.rcall('apiFinishFromSlip', [fin], SLIP_TIMEOUT_MS).then(function (f) {
+        it.finishResult = f;
+        return self.slipFinal(it, o).then(function () { return { state: 'done', result: self.slipResult(it) }; });
+      }, function (e) { throw { slipFail: e, stage: 'finish' }; });
+    }).catch(function (x) {
+      if (x && x.slipFail) return fail(x.slipFail, x.stage);
+      return fail(x, it.stage);
+    }).then(function (out) {
+      delete self.slipBusy[it.cid];
+      // The slip is on the server but its finish-list part waits: show the slip as saved now (the list follows).
+      if (out.state === 'retry' && out.stage === 'finish' && o.immediate) {
+        it.slipShown = true;
+        self.slipSave(it);
+        out = { state: 'done', result: self.slipResult(it, true) };
+      }
+      self.emit();
+      return out;
+    }, function (e) {
+      delete self.slipBusy[it.cid];
+      self.emit();
+      return { state: 'retry', message: cleanMsg(e) };
+    });
+    return p;
+  };
+  /** The server's slip result + what happened to the finish-list part: finish {result} | {error} | {queued: true}. */
+  Engine.prototype.slipResult = function (it, finQueued) {
+    var r = clone(it.result) || {};
+    if (it.fin) r.finish = finQueued ? { queued: true } : it.finishError ? { error: it.finishError } : { result: clone(it.finishResult) || {} };
+    return r;
+  };
+  Engine.prototype.slipFinal = function (it, o) {
+    var self = this;
+    return self.slipDrop(it.cid).then(function () {
+      self.staleAll(); // the jobs / odd jobs the phone has a copy of changed
+      if (!o.immediate) self.slipEmit('done', clone(it), { result: self.slipResult(it) });
+    });
+  };
+
+  /** Sends the queued slips that are due (all of them when opts.force), oldest first. Never rejects. */
+  Engine.prototype.flushSlips = function (opts) {
+    var self = this;
+    opts = opts || {};
+    if (!self.key || self.denied || !self.isOnline()) return Promise.resolve();
+    var now = self.nowMs();
+    var due = self.slipsWaiting().filter(function (s) { return !self.slipBusy[s.cid] && (opts.force || (s.nextAt || 0) <= now); });
+    var i = 0;
+    function next() {
+      if (i >= due.length) return Promise.resolve();
+      var it = due[i++];
+      if (!self.slipById(it.cid)) return next(); // deleted or replaced meanwhile
+      return self.sendSlip(it, {}).then(function (o) {
+        if (o.state === 'retry' && self.reachable === false) return; // no signal: the rest wait for the next try
+        return next();
+      });
+    }
+    return next().catch(function () {});
+  };
+
+  /** Pending slips screen: Sync now for one slip (also one that needs attention: it gets one more try). */
+  Engine.prototype.retrySlip = function (cid) {
+    var self = this, it = self.slipById(cid);
+    if (!it) return Promise.reject(err('That slip is no longer waiting (it may have synced already).'));
+    if (self.slipBusy[cid]) return Promise.resolve({ state: 'retry', message: 'Already on its way.' });
+    it.status = 'pending'; it.nextAt = 0;
+    self.reachable = null;
+    return self.slipSave(it).then(function () {
+      self.emit();
+      if (!self.isOnline()) return { state: 'retry', message: 'No signal right now. It goes up by itself when you have signal.' };
+      return self.sendSlip(it, {});
+    });
+  };
+  /** Pending slips screen: Sync now for all (slips that need attention get one more try too). */
+  Engine.prototype.requeueAll = function () {
+    var self = this;
+    self.reachable = null;
+    return Promise.all(self.mySlips().filter(function (s) { return s.status === 'attention' || s.nextAt; }).map(function (s) {
+      s.status = 'pending'; s.nextAt = 0;
+      return self.slipSave(s);
+    })).then(function () { self.emit(); });
+  };
+  /** Pending slips screen: Delete (the screen asks first). */
+  Engine.prototype.deleteSlip = function (cid) {
+    var self = this;
+    if (self.slipBusy[cid]) return Promise.reject(err('This slip is on its way to the office right now. Try again in a moment.'));
+    if (!self.slipById(cid)) return Promise.resolve();
+    return self.slipDrop(cid).then(function () { self.emit(); });
+  };
+
   /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
   Engine.prototype.handle = function (fn, args) {
     var self = this;
@@ -634,6 +904,9 @@
           if (!cf && self.kv.finish && self.kv.finish.data.details[args[0]]) cf = { at: self.kv.finish.at, data: self.kv.finish.data.details[args[0]] };
           return self.read(fn, args, cf, function (d) { self.remember(kf, d); });
         }
+        // v1.3 offline slip queue: args = [input, phoneOpts] / [oddId, input, phoneOpts] (phoneOpts never reaches the server)
+        case 'apiSubmitSlip': return self.queueSlip('slip', '', args[0], args[1]);
+        case 'apiOddSlip': return self.queueSlip('oddSlip', args[0], args[1], args[2]);
         case 'apiPoints': return self.read(fn, args, self.reads().points || null, function (d) { self.remember('points', d); });
         // v1.2 materials picker: the list from the phone's copy when there is no signal (edits need signal)
         case 'apiMaterials': return self.read(fn, args, self.reads().mats || (self.kv.mats ? { at: self.kv.mats.at, data: self.kv.mats.data } : null),
@@ -644,5 +917,6 @@
     });
   };
 
-  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG };
+  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
+           slipBackoff: slipBackoff, slipFailKind: slipFailKind, SLIP_BACKOFF_MS: SLIP_BACKOFF_MS, SLIP_QUEUED_MSG: SLIP_QUEUED_MSG };
 });
