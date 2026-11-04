@@ -725,6 +725,7 @@
       S.jobs = j.ok ? j.events : [];
       el.innerHTML = jobsHtml(j);
       wireJobs(el);
+      slipQMarkJobs(el); // v1.3 slipq-hook
     }).catch(function (err) { var el = $('#jobs'); if (el) el.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
   }
   function loadWeekStrip() {
@@ -831,6 +832,7 @@
       '<h3 style="margin:12px 0 4px">Finish list</h3><div id="jobFinish"><div class="loading">Loading&#x2026;</div></div>' +
       '<button type="button" class="btn primary big" id="slipBtn" style="margin-top:12px">Create completed slip</button>');
     wireClose();
+    slipQJobNote(e); // v1.3 slipq-hook
     var detail = null;
     $('#slipBtn').onclick = function () { openSlipForm(e, detail); };
     function apply(d) {
@@ -1013,6 +1015,7 @@
         if (input.date > S.boot.today) { toast('The slip date can\'t be in the future.', 4000); $('#sDate').focus(); return; }
       }
       var btn = $('#slipSubmit'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      if (slipQOn()) { slipQSubmit(e, detail, odd, input, btn); return; } // v1.3 slipq-hook
       if (odd) {
         call('apiOddSlip', odd.id, input).then(function (r) {
           closeModal();
@@ -1082,12 +1085,14 @@
   }
   function renderTools() {
     matSyncTool(); // v1.2 mat-hook
+    slipQSyncTool(); // v1.3 slipq-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
       '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
   }
   function renderToolPage(id, a, b) {
     matSyncTool(); // v1.2 mat-hook
+    slipQSyncTool(); // v1.3 slipq-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
     if (t.action.type === 'link') { go('#tools'); return; }
@@ -1287,6 +1292,7 @@
         };
       }
       if ($('#oddSlip')) $('#oddSlip').onclick = function () { openSlipForm({ id: '', date: '', title: o.title }, null, o); };
+      slipQOddNote(o); // v1.3 slipq-hook
       if ($('#oddToVerify')) $('#oddToVerify').onclick = setStatus('Verify', 'Marked Verify.');
       if ($('#oddToDone')) $('#oddToDone').onclick = setStatus('Done', 'Marked Done.');
       if ($('#oddToOpen')) $('#oddToOpen').onclick = setStatus('Open', 'Back to Open.');
@@ -1992,6 +1998,7 @@
         '<a class="drill" id="drillRewards" href="#mod-rewards"><span>Rewards and point rules</span><span class="val"></span></a>' +
         '<a class="drill" href="#mod-settings"><span>Settings and reminders</span><span class="val"></span></a></div>' : '') +
       '<p class="muted small ver" id="moreVer">' + esc(S.boot.app.name) + ' ' + esc(S.boot.app.version) + '</p>';
+    slipQMoreLink(); // v1.3 slipq-hook
     $('#forget').onclick = function () {
       if (!window.confirm('Sign out on this phone? You will need the link from your invite email to get back in.')) return;
       lsDel('key'); S.key = ''; S.boot = null; denied('NOT_INVITED: Signed out on this phone.');
@@ -2191,6 +2198,226 @@
 
   /** A form field by name (works the same in every browser). */
   function fld(f, name) { return $('[name="' + name + '"]', f); }
+
+  /* ================= Offline slip queue (v1.3): phone app only =================
+   * On the installable phone app (web/, window.WES_ENGINE) a completed slip is saved on the phone FIRST and then sent
+   * (engine.js queueSlip): right away with signal, else by itself when signal is back. This section is the screen side:
+   *  - slipQSubmit: the slip form's submit on the phone (the v0.9 submit code below the hook still runs on the Apps Script
+   *    web page, unchanged). Same checks and the same "Slip saved..." confirmation when it went up; "Saved on this phone,
+   *    waiting to sync" (never a fake "saved") when it did not.
+   *  - "Waiting to sync" (amber) / "Needs attention" (red) on the job line, the job popup and the odd job.
+   *  - Tools > Slips waiting to sync (#tool/pending; also More, and a tap on the status line): every queued slip with job,
+   *    date, status, last error and tries; Sync now, Edit (the slip form with the queued slip; saving replaces it) and Delete.
+   * None of it runs on the Apps Script web page (no WES_ENGINE there). The slip text is built by the server as before.
+   */
+  function slipQ() { return window.WES_ENGINE && typeof window.WES_ENGINE.queueSlip === 'function' ? window.WES_ENGINE : null; }
+  function slipQOn() { return !!slipQ(); }
+  ICONS.pending = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a5 5 0 0 1-.5-9.97A6 6 0 0 1 18 9a4 4 0 0 1 0 8h-1"/><path d="M12 12v6M9 15l3 3 3-3"/></svg>';
+  var SLIPQ_TOOL = { id: 'pending', title: 'Slips waiting to sync', subtitle: 'Slips saved on this phone that have not reached the office yet', icon: 'pending',
+    action: { type: 'page', render: function () { renderPending(); } } };
+  function slipQSyncTool() {
+    if (slipQOn() && TOOLS.indexOf(SLIPQ_TOOL) < 0) TOOLS.push(SLIPQ_TOOL);
+  }
+  function sqColor(r) { return r && r.color ? (r.color.label || r.color.name || '') : ''; }
+  function sqWhen(ms) {
+    if (!ms) return '';
+    var d = new Date(ms), t = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    var ds = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    return (S.boot && ds === S.boot.today ? '' : MON[d.getMonth()] + ' ' + d.getDate() + ', ') + time12(t);
+  }
+  function sqTitle(it) { return (it.ctx && it.ctx.title) || (it.kind === 'oddSlip' ? 'Odd job' : 'Job'); }
+  function sqState(it) {
+    var Q = slipQ();
+    if (it.status === 'attention') return { cls: 'sq-bad', label: 'Needs attention' };
+    if (Q && Q.slipBusy[it.cid]) return { cls: 'sq-wait', label: 'Sending\u2026' };
+    if (it.stage === 'finish') return { cls: 'sq-wait', label: 'Slip sent, finish list waiting' };
+    return { cls: 'sq-wait', label: 'Waiting to sync' };
+  }
+  function sqFinishText(f) {
+    if (!f) return '';
+    if (f.queued) return ' Finish list: waiting to sync.';
+    if (f.error) return ' Finish list NOT updated: ' + f.error;
+    var r = f.result || {}, bits = [];
+    if (r.done) bits.push(r.done + ' ticked off');
+    if (r.added) bits.push(r.added + ' added');
+    return (bits.length ? ' Finish list: ' + bits.join(', ') + '.' : '') + (r.warning ? ' ' + r.warning : '');
+  }
+
+  /** The slip form's submit on the phone: saved on the phone first, then up (now or later). input is the v0.9 form input. */
+  function slipQSubmit(e, detail, odd, input, btn) {
+    var Q = slipQ(), form = $('#slipForm');
+    var editCid = form ? form.getAttribute('data-sq-edit') || '' : '';
+    var was = editCid ? Q.slipById(editCid) : null;
+    var reset = function () { btn.disabled = false; btn.textContent = editCid ? 'Save changes' : 'Submit slip'; };
+    var finish = detail && detail.finish, fl = finish ? (finish.linked[0] || finish.suggested[0] || null) : null;
+    var doneIds = odd ? [] : $all('#slipFinishOpen .sfdone:checked').map(function (c) { return c.value; });
+    var newItems = !odd && $('#sFinishAdd') && $('#sFinishAdd').checked ? lines(input.finishNotes) : [];
+    var fin = !odd && (doneIds.length || newItems.length) ? { eventId: e.id, date: e.date, listId: fl ? fl.id : '', customer: finish ? finish.customerGuess : '',
+      address: e.location || '', doneItemIds: doneIds, newItems: newItems } : null;
+    input.materials = (input.materials || []).filter(function (m) { return String(m.qty || '').trim() || String(m.item || '').trim(); });
+    var ctx = was ? was.ctx : { title: odd ? odd.title : e.title, location: e.location || '', finish: finish || null,
+                                hadSlip: !!(detail && (detail.slip || detail.slipOnFile)) };
+    ctx.doneIds = doneIds;
+    var opts = { fin: fin, ctx: ctx, replace: editCid };
+    var p = odd ? call('apiOddSlip', odd.id, input, opts) : call('apiSubmitSlip', input, opts);
+    p.then(function (r) {
+      closeModal();
+      if (r.queued) {
+        toast(r.message || 'Saved on this phone. Waiting to sync.', 7000);
+      } else if (odd) {
+        toast('Slip saved. Added to the calendar for ' + longDate(input.date) + ' (' + sqColor(r) + '). Moved to Done.' + applyPoints(r.points, ''), 5000);
+      } else {
+        toast((r.replaced ? 'Slip replaced. ' : 'Slip saved. ') + 'Added to the calendar as its own entry (' + sqColor(r) + ').' +
+          (r.warning ? ' ' + r.warning : '') + applyPoints(r.points, '') + sqFinishText(r.finish), 5000);
+      }
+      if (editCid) go('#tool/pending');
+      else if (odd) go('#tool/odds/' + odd.id);
+      else if ($('#jobs')) loadJobs(S.homeDay);
+    }).catch(function (err) { reset(); fail(err); });
+  }
+
+  /** Edit on the Slips waiting to sync screen: the slip form, filled with the queued slip. Saving replaces it. */
+  function slipQEdit(cid) {
+    var Q = slipQ(), it = Q && Q.slipById(cid);
+    if (!it) { toast('That slip is no longer waiting (it may have synced already).', 4000); renderPending(); return; }
+    if (it.stage !== 'slip') { toast('This slip already reached the office; only its finish-list part is waiting. Open the job to replace the slip.', 6000); return; }
+    var inp = it.input, ctx = it.ctx || {};
+    var prev = { workPerformed: inp.workPerformed || '', crew: (inp.crew || []).concat(inp.extraCrew || []), sc: !!inp.sc,
+                 materials: (inp.materials || []).filter(function (m) { return String(m.qty || '').trim() || String(m.item || '').trim(); }),
+                 billable: inp.billable !== false, finishNotes: inp.finishNotes || '' };
+    var odd = it.kind === 'oddSlip' ? { id: it.oddId, title: ctx.title || 'Odd job' } : null;
+    var e = odd ? { id: '', date: '', title: odd.title } : { id: inp.eventId, date: inp.date, title: ctx.title || 'Job', location: ctx.location || '' };
+    openSlipForm(e, { slip: prev, finish: ctx.finish || null }, odd);
+    var form = $('#slipForm');
+    if (!form) return;
+    form.setAttribute('data-sq-edit', cid);
+    if (!ctx.hadSlip && $('#replaceNote')) $('#replaceNote').parentNode.removeChild($('#replaceNote'));
+    form.insertAdjacentHTML('beforebegin', '<div class="note warn" id="sqEditNote">Editing a slip that is waiting to sync. Saving replaces the one on this phone.</div>');
+    if (odd && $('#sDate')) $('#sDate').value = inp.date || $('#sDate').value;
+    (ctx.doneIds || []).forEach(function (id) { $all('#slipFinishOpen .sfdone').forEach(function (c) { if (c.value === id) c.checked = true; }); });
+    $('#slipSubmit').textContent = 'Save changes';
+    $('#slipBack').onclick = function () { closeModal(); go('#tool/pending'); };
+  }
+
+  /** Tools > Slips waiting to sync. */
+  function renderPending() {
+    var Q = slipQ();
+    if (!Q) { go('#tools'); return; }
+    var items = Q.mySlips();
+    app.innerHTML = backLink('#tools', 'Tools') + '<h1>Slips waiting to sync</h1>' +
+      '<p class="sub">Saved on this phone, not at the office yet. They go up by themselves when you have signal.</p>' +
+      (items.length ? '<button type="button" class="btn primary block" id="sqSyncAll">Sync now</button>' : '') +
+      '<div id="sqList">' + (items.length ? items.map(function (it) {
+        var st = sqState(it), inp = it.input || {};
+        var when = inp.date ? longDate(inp.date) : '';
+        var next = it.status !== 'attention' && it.nextAt && it.nextAt > Date.now() ? ' &#183; next try ' + esc(sqWhen(it.nextAt)) : '';
+        return '<div class="card sqitem" data-cid="' + esc(it.cid) + '"><div class="spread"><b class="sqt">' + esc(sqTitle(it)) + '</b>' +
+          '<span class="chip ' + st.cls + ' sqst">' + esc(st.label) + '</span></div>' +
+          '<div class="muted small">' + (it.kind === 'oddSlip' ? 'Odds and Ends &#183; ' : '') + esc(when) + ' &#183; saved ' + esc(sqWhen(it.createdAt)) +
+            ' &#183; ' + esc(it.attempts || 0) + (it.attempts === 1 ? ' try' : ' tries') + next + '</div>' +
+          (it.lastError ? '<div class="note ' + (it.status === 'attention' ? 'sq-bad' : 'warn') + ' sqerr">' +
+            (it.status === 'attention' ? 'The office said: ' : 'Last try: ') + esc(it.lastError) + '</div>' : '') +
+          '<div class="row sqacts"><button type="button" class="btn small sqSync">Sync now</button>' +
+            (it.stage === 'slip' ? '<button type="button" class="btn small sqEdit">Edit</button>' : '') +
+            '<button type="button" class="btn small danger sq-danger sqDel">Delete</button></div>' +
+          '<div class="sqconfirm hidden"><p class="small"><b>Delete this slip from the phone?</b> ' +
+            (it.attempts || it.stage !== 'slip' ? 'If it already reached the office, this does not take it off the calendar.' : 'It has not reached the office, so it will be gone.') + '</p>' +
+            '<div class="row"><button type="button" class="btn small danger sq-danger sqDelYes">Delete for good</button>' +
+            '<button type="button" class="btn small sqDelNo">Keep it</button></div></div></div>';
+      }).join('') : '<p class="muted" id="sqNone">Nothing waiting. Every slip saved on this phone has reached the office.</p>') + '</div>';
+    var all = $('#sqSyncAll');
+    if (all) all.onclick = function () {
+      all.disabled = true; all.textContent = 'Syncing\u2026';
+      Q.requeueAll().then(function () { return Q.syncNow({ force: true, pull: true }); }).then(function () { renderPending(); sqToastNoSignal(Q); });
+    };
+    $all('#sqList .sqitem').forEach(function (card) {
+      var cid = card.getAttribute('data-cid');
+      $('.sqSync', card).onclick = function () {
+        var b = this, it0 = Q.slipById(cid); b.disabled = true; b.textContent = 'Sending\u2026';
+        Q.retrySlip(cid).then(function (o) {
+          if (o && o.state === 'done') toast('Slip synced: ' + sqTitle(it0 || {}) + ' is on the WES calendar.' + sqFinishText(o.result && o.result.finish), 5000);
+          else if (o && o.message) toast(o.message, 5000);
+          renderPending();
+        }).catch(function (err) { fail(err); renderPending(); });
+      };
+      var ed = $('.sqEdit', card);
+      if (ed) ed.onclick = function () { slipQEdit(cid); };
+      $('.sqDel', card).onclick = function () { $('.sqconfirm', card).classList.remove('hidden'); $('.sqacts', card).classList.add('hidden'); };
+      $('.sqDelNo', card).onclick = function () { $('.sqconfirm', card).classList.add('hidden'); $('.sqacts', card).classList.remove('hidden'); };
+      $('.sqDelYes', card).onclick = function () {
+        Q.deleteSlip(cid).then(function () { toast('Deleted from this phone.', 3000); renderPending(); }).catch(fail);
+      };
+    });
+  }
+  function sqToastNoSignal(Q) {
+    if (Q.slipsWaiting().length && !Q.likelyOnline()) toast('No signal right now. They go up by themselves when you have signal.', 4000);
+  }
+
+  /** "Waiting to sync" / "Needs attention" on the job lines (Home and the day lists). */
+  function slipQMarkJobs(el) {
+    var Q = slipQ();
+    if (!Q || !el) return;
+    $all('.line.job', el).forEach(function (line) {
+      var old = $('.sqmark', line); if (old) old.parentNode.removeChild(old);
+      var ev = S.jobs[+line.getAttribute('data-i')], it = ev && !ev.isSlip ? Q.slipFor(ev.id, ev.date) : null;
+      if (!it) return;
+      var st = sqState(it), s = $('.s', line);
+      if (s) s.insertAdjacentHTML('beforeend', ' <span class="chip ' + st.cls + ' sqmark">' + esc(st.label) + '</span>');
+    });
+  }
+  /** The same note in the job popup (and on an odd job), with a way to the queue screen. */
+  function sqNoteHtml(it, id) {
+    var st = sqState(it);
+    return '<div class="note ' + (it.status === 'attention' ? 'sq-bad' : 'warn') + ' sqnote" id="' + id + '"><b>' + esc(st.label) + ':</b> ' +
+      (it.status === 'attention' ? 'the office refused this slip: ' + esc(it.lastError) + ' '
+        : 'a slip for this job is saved on this phone and goes up by itself when you have signal. ') +
+      '<a href="#tool/pending">Slips waiting to sync</a></div>';
+  }
+  function slipQJobNote(e) {
+    var Q = slipQ(), it = Q && e && !e.isSlip ? Q.slipFor(e.id, e.date) : null;
+    var old = $('#jobSlipQ'); if (old) old.parentNode.removeChild(old);
+    if (!it || !$('#jobWo')) return;
+    $('#jobWo').insertAdjacentHTML('beforebegin', sqNoteHtml(it, 'jobSlipQ'));
+  }
+  function slipQOddNote(o) {
+    var Q = slipQ(), it = Q && o ? Q.slipFor('', '', o.id) : null;
+    var acts = $('.oddacts');
+    if (!it || !acts) return;
+    acts.insertAdjacentHTML('beforebegin', sqNoteHtml(it, 'oddSlipQ'));
+  }
+  function slipQMoreLink() {
+    var Q = slipQ(), h = app.querySelector('h1');
+    if (!Q || !h) return;
+    var n = Q.mySlips().length, bad = Q.slipsAttention().length;
+    h.insertAdjacentHTML('afterend', '<a class="drill" id="drillPending" href="#tool/pending"><span>Slips waiting to sync</span><span class="val">' +
+      (bad ? esc(bad) + ' need attention' : n ? esc(n) + ' waiting' : 'none') + '</span></a>');
+  }
+
+  /** Keep what is on screen in step with the queue; tell the tech when a slip goes up (or is refused) in the background. */
+  var sqSig = '';
+  function slipQRefresh() {
+    var Q = slipQ();
+    if (!Q) return;
+    var sig = JSON.stringify(Q.mySlips().map(function (s) { return [s.cid, s.status, s.stage, s.attempts, s.lastError, !!Q.slipBusy[s.cid]]; }));
+    if (sig === sqSig) return;
+    sqSig = sig;
+    if ($('#sqList') && !$('#sqList .sqconfirm:not(.hidden)') && !$('#sqList button[disabled]')) renderPending();
+    if ($('#jobs')) slipQMarkJobs($('#jobs'));
+    if ($('#drillPending') && location.hash === '#more') { var d = $('#drillPending'); d.parentNode.removeChild(d); slipQMoreLink(); }
+  }
+  if (slipQOn()) {
+    slipQ().on(function () { setTimeout(slipQRefresh, 0); });
+    slipQ().onSlip(function (ev, it, info) {
+      if (ev === 'done') {
+        var r = info && info.result || {};
+        toast(it.slipShown ? 'Finish list synced for ' + sqTitle(it) + '.' + sqFinishText(r.finish)
+          : 'Slip synced: ' + sqTitle(it) + (it.input && it.input.date ? ' (' + longDate(it.input.date) + ')' : '') + ' is on the WES calendar.' + sqFinishText(r.finish), 6000);
+        if ($('#jobs') && S.boot) loadJobs(S.homeDay);
+      } else if (ev === 'attention') {
+        toast('Slip for ' + sqTitle(it) + ' needs attention: ' + (info && info.message || 'the office refused it') + ' (Tools > Slips waiting to sync)', 9000);
+      }
+    });
+  }
 
   /* ================= Materials picker (v1.2) =================
    * Only HOW a tech picks materials changes. The slip form still sends [{qty, item}] from its .mat rows (.mq / .mi), so the

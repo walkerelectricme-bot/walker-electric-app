@@ -6,7 +6,8 @@
  *   del(store, key) -> Promise   all(store) -> Promise<[values]>                 clear(store) -> Promise
  *
  * Stores: 'kv' (cached server data and settings, by key), 'outbox' (changes waiting to sync, keyPath cid, oldest first
- * by seq) and 'problems' (changes the server refused, keyPath cid, shown to the person until dismissed).
+ * by seq), 'problems' (changes the server refused, keyPath cid, shown to the person until dismissed) and, v1.3, 'slips'
+ * (the offline slip queue: completed slips saved on the phone, waiting to go up; keyPath cid).
  *
  * IdbStore = IndexedDB on the phone. MIGRATIONS is the versioned list of schema steps. A new app version may ADD a step;
  * it must never drop or clear the outbox, so changes made before an update always survive the update.
@@ -27,6 +28,11 @@
       var ob = db.createObjectStore('outbox', { keyPath: 'cid' });
       ob.createIndex('seq', 'seq', { unique: false });
       db.createObjectStore('problems', { keyPath: 'cid' });
+    },
+    // v1.3: the offline slip queue. One record per slip waiting to go up (keyPath cid = the client slip ID). Added, never
+    // dropped: slips saved on the phone before an update are still there after it.
+    function v2(db) {
+      if (!db.objectStoreNames.contains('slips')) db.createObjectStore('slips', { keyPath: 'cid' });
     }
   ];
 
@@ -84,7 +90,7 @@
   IdbStore.prototype.close = function () { if (this.db) { this.db.close(); this.db = null; } };
 
   function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
-  function MemoryStore() { this.data = { kv: {}, outbox: {}, problems: {} }; }
+  function MemoryStore() { this.data = { kv: {}, outbox: {}, problems: {}, slips: {} }; }
   MemoryStore.prototype.open = function () { return Promise.resolve(this); };
   MemoryStore.prototype.get = function (store, key) { return Promise.resolve(clone(this.data[store][key])); };
   MemoryStore.prototype.put = function (store, value, key) {
