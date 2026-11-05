@@ -116,6 +116,10 @@
     draw();
   }
   function opLabel(p) {
+    var g = p.gen || {}; // v1.4 generator service tool
+    if (p.type === 'genService') return 'Generator service' + (g.generatorId ? ', ' + g.generatorId : '') + (g.serviceDate ? ', ' + g.serviceDate : '');
+    if (p.type === 'genLoopOrder') return 'Usual order for ' + (g.loopId || 'a loop');
+    if (p.type === 'genSetPin') return 'Generator pin' + (g.generatorId ? ', ' + g.generatorId : '');
     var e = p.entry || {};
     var what = p.type === 'clockIn' ? 'Clock in' : p.type === 'clockOut' ? 'Clock out' : p.type === 'delete' ? 'Remove a block' : 'Time block';
     return what + (e.date ? ', ' + e.date : '') + (e.start ? ' ' + e.start + (e.end ? '-' + e.end : '') : '');
