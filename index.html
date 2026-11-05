@@ -280,8 +280,6 @@
   .gen-yn { padding:8px 0; border-bottom:1px solid var(--soft); }
   .gen-yn .t { font-weight:600; margin-bottom:6px; }
   .gen-ord .btn.small { min-width:48px; min-height:44px; font-size:20px; }
-  .gen-home { display:block; text-decoration:none; color:var(--ink); }
-  .gen-old { text-align:center; margin-top:16px; }
   /* v1.4 GPS pin and maps (Leaflet loads only when a map opens) */
   .gen-pinbtns { margin-top:8px; } .gen-pinbtns .btn { flex:1 1 140px; }
   .gen-mapwrap { position:relative; margin:0 0 12px; }
@@ -290,6 +288,9 @@
   .gen-cross:before, .gen-cross:after { content:""; position:absolute; background:#d93025; box-shadow:0 0 0 1px #fff; }
   .gen-cross:before { left:21px; top:0; width:2px; height:44px; }
   .gen-cross:after { top:21px; left:0; height:2px; width:44px; }
+  /* v1.5 inactive customers ("Not serviced anymore") */
+  .chip.gen-off { background:#ececec; border-color:#9e9e9e; color:#5a5a5a; }
+  .gen-offstop .t, .gen-offstop .s { color:#9e9e9e; }
 </style>
 
   <link rel="stylesheet" href="css/shell.css">
@@ -736,7 +737,6 @@
     if (S.glowNext) { var g = S.glowNext; S.glowNext = ''; setTimeout(function () { glow($(g)); }, 30); }
     loadJobs(S.homeDay);
     loadWeekStrip();
-    genHomeCard(); // v1.4 gen-hook
     // fresh numbers (a crew mate's slip may have earned me a point); my own only
     if (S.points) call('apiPoints').then(function (p) { S.points = p; drawPill(); if ($('#streakRisk')) drawRisk(); }).catch(function () {});
   }
@@ -2454,7 +2454,8 @@
   /* ================= Generator service (v1.4) =================
    * Tools > Generator service, in the app (GENERATOR-PLAN.md). Shown only when the server says so (S.boot.generatorMode
    * 'inapp': Settings > GENERATOR_MODE inapp = everyone, mods = moderators only, link = nobody: the tile opens the old
-   * Generator Service app as before). Its one-line hooks end in "// v1.4 gen-hook" (Tools page, a tool page, Home).
+   * Generator Service app as before). Its one-line hooks end in "// v1.4 gen-hook" (the Tools page and a tool page).
+   * v1.5 (Gibs Nov 4): no Home card (the tool is reached from Tools only); no link to the old app (it is off).
    *  - Today's loop: each tech picks their own loop; remembered on this phone for today. Stops with status chips
    *    (Done today / Waiting to upload / Not saved), Navigate (Google Maps, the address on file; no GPS anywhere).
    *  - A stop: Customer / Generator / History, folded. The service form: checklist Yes/No, parts, engine hours, error
@@ -2469,6 +2470,10 @@
    *    location, no tracking: nothing else ever reads or keeps the phone's location. "Use my location" shows only in the
    *    phone app (the GitHub Pages page itself, https, top level), not on the Apps Script web page (a sandboxed frame).
    *  - Map of today's loop (pinned stops only; needs signal).
+   *  - v1.5 inactive customers (Active = No, "not serviced anymore"): left out of today's loop, loop counts, the loop map,
+   *    reorder and "Not serviced this year"; search hides them unless "Show inactive (N)". Their records and history
+   *    stay. Customer details: "Stop servicing" / "Service again" (needs signal; only the Active cell changes).
+   *    Loops (manage): inactive stops greyed with "Remove from loop". LoopStops rows are never removed by themselves.
    * On the phone app the generator copy, services and the usual order go through the offline engine (engine.js); on the
    * Apps Script web page the same calls go straight to the server. Access codes never reach the phone (Generators.gs).
    */
@@ -2511,6 +2516,15 @@
     var g = G.generators[gid], c = g && G.customers[g.cid];
     return c ? c.name : (g ? gid : '');
   }
+  /** v1.5: a stop / generator whose customer is inactive (Active = No) is not "to be serviced". */
+  function genCustInactive(G, cid) { var c = G.customers[cid]; return !!(c && c.active === false); }
+  function genGenInactive(G, gid) { var g = G.generators[gid]; return !!(g && genCustInactive(G, g.cid)); }
+  function genStopInactive(G, s) {
+    if (s.inactive) return true;
+    return s.gid && G.generators[s.gid] ? genGenInactive(G, s.gid) : !!(s.cid && genCustInactive(G, s.cid));
+  }
+  /** The stops to be serviced today: the day's order without inactive customers. */
+  function genActiveStops(G, loop, dayOrder) { return genOrdered(loop, dayOrder).filter(function (s) { return !genStopInactive(G, s); }); }
   function genCollator(a, b) { return String(a).localeCompare(String(b), 'en', { sensitivity: 'base', numeric: true }); }
 
   /* ---- pure helpers (window.WES_GEN_TEST) ---- */
@@ -2583,7 +2597,8 @@
         /\bkeys?\b[^\n]{0,20}\b(under|behind|above|inside|hidden|in the|on the)\b/i.test(l);
     });
   }
-  window.WES_GEN_TEST = { notServiced: genNotServiced, search: genSearch, ordered: genOrdered, status: genStatus, looksLikeCode: genLooksLikeCode };
+  window.WES_GEN_TEST = { notServiced: genNotServiced, search: genSearch, ordered: genOrdered, status: genStatus, looksLikeCode: genLooksLikeCode,
+                         activeStops: genActiveStops };
 
   /* ---- screens ---- */
   function genChips(st) {
@@ -2611,10 +2626,6 @@
           p.type === 'genSetPin' ? 'Pin for ' + genName(G, p.gid) + ' (' + (p.gid || '') + ') was not saved: ' : 'Usual order not saved: ') + esc(p.message) + '</div>';
       }).join('') + '<p class="small">Fix it and save again. Tap the sync line to clear this.</p></div>' : '');
   }
-  function genFoot() {
-    var u = S.boot && S.boot.app && S.boot.app.generatorAppUrl;
-    return u ? '<p class="muted small gen-old"><a target="_blank" rel="noopener" href="' + esc(u) + '">Open the old Generator Service app</a></p>' : '';
-  }
   function renderGen(a, b) {
     loading();
     var force = a === 'refresh';
@@ -2637,7 +2648,7 @@
       }
     }).catch(function (err) {
       app.innerHTML = backLink('#tools', 'Tools') + '<div class="card"><h2>Generator service</h2><p>' + esc(errMsg(err)) + '</p>' +
-        '<button class="btn block" id="genRetry">Try again</button></div>' + genFoot();
+        '<button class="btn block" id="genRetry">Try again</button></div>';
       $('#genRetry').onclick = function () { renderGen(a, b); };
     });
   }
@@ -2645,14 +2656,15 @@
   function genPick(G) {
     var d = genDay(), act = G.loops.filter(function (l) { return l.active; }), off = G.loops.filter(function (l) { return !l.active; });
     var row = function (l) {
+      var n = genActiveStops(G, l, null).length; // v1.5: inactive customers are not counted
       return '<button type="button" class="line gen-loop" data-loop="' + esc(l.id) + '"><span class="l"><span class="t">' + esc(l.name) + '</span>' +
-        '<span class="s">' + esc((l.area ? l.area + ' \u00b7 ' : '') + l.stops.length + (l.stops.length === 1 ? ' stop' : ' stops')) + '</span></span>' +
+        '<span class="s">' + esc((l.area ? l.area + ' \u00b7 ' : '') + n + (n === 1 ? ' stop' : ' stops')) + '</span></span>' +
         '<span class="r">' + (d.loopId === l.id ? '<span class="chip solid">Today</span>' : '') + '<span class="tap" aria-hidden="true">&#8250;</span></span></button>';
     };
     app.innerHTML = genHead(G, '') + '<div class="card"><h3>Which loop are you doing today?</h3>' +
       (act.length ? act.map(row).join('') : '<p class="muted">No loops yet.</p>') +
       (off.length ? '<details class="gen-fold"><summary>Loops turned off (' + off.length + ')</summary>' + off.map(row).join('') + '</details>' : '') +
-      '<p class="muted small">Only this phone remembers your pick, for today.</p></div>' + genFoot();
+      '<p class="muted small">Only this phone remembers your pick, for today.</p></div>';
     genWire();
     $all('.gen-loop').forEach(function (btn) {
       btn.onclick = function () { var dd = genDay(); dd.loopId = btn.getAttribute('data-loop'); genDaySave(dd); go('#tool/generators'); };
@@ -2661,7 +2673,7 @@
   function genTodayPage(G) {
     var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
     if (!loop) return genPick(G);
-    var today = genToday(), stops = genOrdered(loop, d.order[loop.id]), done = 0;
+    var today = genToday(), stops = genActiveStops(G, loop, d.order[loop.id]), done = 0; // v1.5: no inactive customers
     var rows = stops.map(function (s, i) {
       if (!s.gid || !G.generators[s.gid]) {
         return '<div class="line gen-stop raw"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(s.raw || 'Stop') + '</span>' +
@@ -2683,7 +2695,7 @@
       '<div class="actions"><button class="btn small" id="genChange" data-go="#tool/generators/pick">Change loop</button>' +
       '<button class="btn small" id="genReorderBtn" data-go="#tool/generators/reorder">Reorder</button>' +
       '<button class="btn small" id="genMapBtn" data-go="#tool/generators/map">Map</button>' +
-      '<button class="btn small" id="genRefresh">Refresh</button></div></div>' + genFoot();
+      '<button class="btn small" id="genRefresh">Refresh</button></div></div>';
     genWire();
     $('#genRefresh').onclick = function () { renderGen('refresh'); };
     $all('.gen-stop[data-gid]').forEach(function (row) {
@@ -2713,7 +2725,8 @@
     var missing = (g.missing || []).map(function (k) { var f = fl.filter(function (x) { return x.key === k; })[0]; return f ? f.label : k; });
     app.innerHTML = backLink('#tool/generators', 'Today\'s loop') +
       '<h1 id="genStopName">' + esc(c.name || gid) + '</h1><p class="sub">' + esc(g.address || c.address || '') + '</p>' +
-      '<div class="row gen-chips" id="genStopChips">' + genChips(st) + (st.bad ? '<p class="note gen-badnote">' + esc(st.bad) + '</p>' : '') + '</div>' +
+      '<div class="row gen-chips" id="genStopChips">' + (c.active === false ? '<span class="chip gen-off" id="genOffChip">Not serviced anymore</span>' : '') +
+        genChips(st) + (st.bad ? '<p class="note gen-badnote">' + esc(st.bad) + '</p>' : '') + '</div>' +
       '<div class="actions">' + navBtn(g.nav, 'genNav') + '<a class="btn primary" id="genStartService" href="#tool/generators/service/' + genEnc(gid) + '">Service this generator</a></div>' +
       '<div class="card gen-pin" id="genPinCard"></div>' +
       '<details class="card gen-fold" id="genCust"><summary><b>Customer</b></summary>' +
@@ -2721,7 +2734,9 @@
         genKv('Address', c.address) + (c.access ? '<div class="line"><div class="l"><span class="s">Access</span><span class="t" id="genAccess">' + genMultiline(c.access) + '</span></div></div>' : '') +
         (c.flags ? '<div class="line"><div class="l"><span class="s">Flags</span><span class="t">' + genMultiline(c.flags) + '</span></div></div>' : '') +
         (c.notes ? '<div class="line"><div class="l"><span class="s">Notes</span><span class="t" id="genCustNotes">' + genMultiline(c.notes) + '</span></div></div>' : '') +
-        (c.active === false ? '<p class="note">This customer is marked inactive.</p>' : '') + '</details>' +
+        (c.active === false ? '<p class="note" id="genInactiveNote">Not serviced anymore: this customer is left out of the loops, search and "Not serviced this year". The records and history stay.</p>' : '') +
+        (c.id ? '<button type="button" class="btn small' + (c.active === false ? '' : ' danger') + '" id="genActiveBtn">' +
+          (c.active === false ? 'Service again' : 'Stop servicing') + '</button> <span class="muted small">(needs signal)</span>' : '') + '</details>' +
       '<details class="card gen-fold" id="genGen"><summary><b>Generator</b> <span class="muted small">' + esc(gid) + '</span></summary>' +
         genKv('Brand / make', g.brand) + genKv('Model', g.model) + genKv('Size (kW)', g.kW) + genKv('Serial number', g.serial) + genKv('Install year', g.installYear) +
         genKv('Battery', g.battery ? g.battery.label + (g.battery.warn ? ' (3+ years: check it)' : '') : '', 'genBattery') + genKv('Oil filter part #', g.oilFilter) +
@@ -2729,13 +2744,26 @@
         (missing.length ? '<p class="note small">Missing: ' + esc(missing.join(', ')) + '. You can fill these in on the service form.</p>' : '') + '</details>' +
       '<details class="card gen-fold" id="genHist"><summary><b>History</b> <span class="muted small">' + esc(g.last ? 'last: ' + g.last : 'none') + '</span></summary>' +
         '<div id="genHistList">' + genHistHtml(hist) + '</div>' +
-        '<button class="btn small" id="genFullHist">Full history (needs signal)</button></details>' + genFoot();
+        '<button class="btn small" id="genFullHist">Full history (needs signal)</button></details>';
     genPinCard(G, gid);
+    if ($('#genActiveBtn')) $('#genActiveBtn').onclick = function () { genSetActive(c, c.active === false, gid); };
     $('#genFullHist').onclick = function () {
       var btn = $('#genFullHist'); btn.disabled = true;
       call('apiGenHistory', gid).then(function (r) { $('#genHistList').innerHTML = genHistHtml(r.history); btn.classList.add('hidden'); })
         .catch(function (err) { btn.disabled = false; fail(err); });
     };
+  }
+  /** v1.5 "Stop servicing" / "Service again": only the customer's Active cell changes (needs signal; logged). */
+  function genSetActive(c, active, gid) {
+    var q = active ? 'Service ' + c.name + ' again? Their generators go back on the loops, search and "Not serviced this year".'
+                   : 'Stop servicing ' + c.name + '? Their generators drop off the loops, search and "Not serviced this year". The records and service history stay, and "Service again" undoes it.';
+    if (!window.confirm(q)) return;
+    var btn = $('#genActiveBtn'); if (btn) btn.disabled = true;
+    call('apiGenSetCustomerActive', c.id, active).then(function (r) {
+      if (r.snapshot) S.gen = r.snapshot;
+      toast(active ? c.name + ': serviced again.' : c.name + ': not serviced anymore.', 5000);
+      renderGen('stop', gid);
+    }).catch(function (err) { if (btn) btn.disabled = false; fail(err); });
   }
   function genYesNo(name, label) {
     return '<div class="gen-yn" data-k="' + esc(name) + '"><div class="t">' + esc(label) + '</div><div class="seg">' +
@@ -2810,21 +2838,31 @@
     return list.map(function (x) {
       return '<a class="line gen-res" href="#tool/generators/stop/' + genEnc(x.gid) + '"><span class="l"><span class="t">' + esc(x.name) + '</span>' +
         '<span class="s">' + esc([x.address, showTown && x.town && (x.address || '').indexOf(x.town) < 0 ? x.town : '', x.gid].filter(String).join(' \u00b7 ')) +
-        (x.active === false ? ' \u00b7 inactive' : '') + (x.last !== undefined ? ' \u00b7 last: ' + esc(x.last || 'never') : '') + '</span></span><span class="tap" aria-hidden="true">&#8250;</span></a>';
+        (x.last !== undefined ? ' \u00b7 last: ' + esc(x.last || 'never') : '') + '</span>' +
+        (x.active === false ? '<span class="row gen-chips"><span class="chip gen-off">Not serviced anymore</span></span>' : '') +
+        '</span><span class="tap" aria-hidden="true">&#8250;</span></a>';
     }).join('');
   }
   function genSearchPage(G) {
     app.innerHTML = genHead(G, 'search') + '<div class="card"><label class="field" for="genQ">Search name, address, town, phone or serial</label>' +
-      '<input type="text" id="genQ" autocomplete="off" value="' + esc(S.genQ || '') + '"><div id="genResults"></div></div>' +
+      '<input type="text" id="genQ" autocomplete="off" value="' + esc(S.genQ || '') + '"><div id="genResults"></div>' +
+      '<button type="button" class="linklike hidden" id="genShowInactive"></button></div>' +
       '<button class="btn block" id="genNotDone" data-go="#tool/generators/notdone">Not serviced this year</button>' +
       '<p class="muted small">Search and this list work without signal.</p>' +
-      '<a class="btn block" id="genAddBtn" href="#tool/generators/add" style="margin-top:12px">Add a generator (needs signal)</a>' + genFoot();
+      '<a class="btn block" id="genAddBtn" href="#tool/generators/add" style="margin-top:12px">Add a generator (needs signal)</a>';
     genWire();
     var draw = function () {
       S.genQ = $('#genQ').value;
-      var r = genSearch(G, S.genQ);
-      $('#genResults').innerHTML = S.genQ.trim() ? (r.length ? genResultRows(r, true) : '<p class="muted">No match on this phone\'s list.</p>') : '';
+      // v1.5: inactive customers are hidden unless "Show inactive (N)"
+      var all = genSearch(G, S.genQ), off = all.filter(function (x) { return x.active === false; }).length;
+      var r = S.genShowInactive ? all : all.filter(function (x) { return x.active !== false; });
+      $('#genResults').innerHTML = S.genQ.trim() ? (r.length ? genResultRows(r, true) : '<p class="muted">No match on this phone\'s list' +
+        (off && !S.genShowInactive ? ' (only inactive customers match)' : '') + '.</p>') : '';
+      var t = $('#genShowInactive');
+      t.classList.toggle('hidden', !(S.genQ.trim() && off));
+      t.textContent = S.genShowInactive ? 'Hide inactive (' + off + ')' : 'Show inactive (' + off + ')';
     };
+    $('#genShowInactive').onclick = function () { S.genShowInactive = !S.genShowInactive; draw(); };
     $('#genQ').oninput = draw;
     draw();
   }
@@ -2841,7 +2879,9 @@
   function genReorder(G, msg) {
     var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
     if (!loop) return genPick(G);
-    var keys = genOrdered(loop, d.order[loop.id]).map(function (s) { return s.key; });
+    // v1.5: inactive customers are not shown; they keep their place at the end of the usual order
+    var keys = genActiveStops(G, loop, d.order[loop.id]).map(function (s) { return s.key; });
+    var hidden = loop.stops.filter(function (s) { return genStopInactive(G, s); }).map(function (s) { return s.key; });
     var label = function (k) {
       var s = loop.stops.filter(function (x) { return x.key === k; })[0] || {};
       return s.gid && G.generators[s.gid] ? genName(G, s.gid) : (s.raw || k);
@@ -2872,7 +2912,7 @@
     if ($('#genBackUsual')) $('#genBackUsual').onclick = function () { var dd = genDay(); delete dd.order[loop.id]; genDaySave(dd); go('#tool/generators'); };
     $('#genMakeUsual').onclick = function () {
       var btn = $('#genMakeUsual'); btn.disabled = true;
-      call('apiGenSetUsualOrder', loop.id, loop.sig, keys.slice()).then(function (r) {
+      call('apiGenSetUsualOrder', loop.id, loop.sig, keys.concat(hidden)).then(function (r) {
         var dd = genDay(); delete dd.order[loop.id]; genDaySave(dd);
         toast(r.queued ? r.message : 'Usual order saved.', 5000);
         go('#tool/generators');
@@ -2889,7 +2929,7 @@
         '<span class="s">' + esc((l.area ? l.area + ' \u00b7 ' : '') + l.stops.length + ' stops' + (l.active ? '' : ' \u00b7 turned off')) + '</span></span><span class="tap" aria-hidden="true">&#8250;</span></a>';
     }).join('') + '</div>' +
       '<form class="card" id="genNewLoop"><h3>New loop (needs signal)</h3><label class="field" for="genNlName">Name</label><input type="text" id="genNlName">' +
-      '<label class="field" for="genNlArea">Area</label><input type="text" id="genNlArea"><button class="btn block" type="submit" style="margin-top:12px">Add loop</button></form>' + genFoot();
+      '<label class="field" for="genNlArea">Area</label><input type="text" id="genNlArea"><button class="btn block" type="submit" style="margin-top:12px">Add loop</button></form>';
     genWire();
     $('#genNewLoop').onsubmit = function (ev) {
       ev.preventDefault();
@@ -2908,8 +2948,11 @@
       '<label class="toggle"><input type="checkbox" id="genLActive"' + (l.active ? ' checked' : '') + '> Loop is on (shows in the loop list)</label>' +
       '<button class="btn block" type="submit" style="margin-top:12px">Save loop (needs signal)</button></form>' +
       '<div class="card"><h3>Stops</h3>' + (l.stops.map(function (s, i) {
-        return '<div class="line"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(s.gid && G.generators[s.gid] ? genName(G, s.gid) : s.raw || s.key) + '</span>' +
-          '<span class="s">' + esc(s.gid || 'not linked') + '</span></div><span class="r"><button type="button" class="btn small gen-rm" data-k="' + esc(s.key) + '">Remove</button></span></div>';
+        var off = genStopInactive(G, s); // v1.5: greyed, with a shortcut to take it off the loop (never automatic)
+        return '<div class="line' + (off ? ' gen-offstop' : '') + '" data-k="' + esc(s.key) + '"><div class="l"><span class="t">' + (i + 1) + '. ' +
+          esc(s.gid && G.generators[s.gid] ? genName(G, s.gid) : s.raw || s.key) + '</span>' +
+          '<span class="s">' + esc(s.gid || 'not linked') + '</span>' + (off ? '<span class="row gen-chips"><span class="chip gen-off">Not serviced anymore</span></span>' : '') +
+          '</div><span class="r"><button type="button" class="btn small gen-rm" data-k="' + esc(s.key) + '">' + (off ? 'Remove from loop' : 'Remove') + '</button></span></div>';
       }).join('') || '<p class="muted">No stops yet.</p>') +
       '<label class="field" for="genAddQ">Add a stop: search</label><input type="text" id="genAddQ" autocomplete="off"><div id="genAddRes"></div></div>';
     $('#genLoopForm').onsubmit = function (ev) {
@@ -2924,7 +2967,7 @@
       };
     });
     $('#genAddQ').oninput = function () {
-      var r = genSearch(G, $('#genAddQ').value).slice(0, 12);
+      var r = genSearch(G, $('#genAddQ').value).filter(function (x) { return x.active !== false; }).slice(0, 12);
       $('#genAddRes').innerHTML = r.map(function (x) {
         return '<div class="line"><div class="l"><span class="t">' + esc(x.name) + '</span><span class="s">' + esc(x.address + ' \u00b7 ' + x.gid) + '</span></div>' +
           '<span class="r"><button type="button" class="btn small gen-addstop" data-g="' + esc(x.gid) + '">Add</button></span></div>';
@@ -3000,7 +3043,7 @@
     var box = $('#genPinCard'), g = G.generators[gid];
     if (!box || !g) return;
     S.genPinSkip = S.genPinSkip || {};
-    var skip = S.genPinSkip[gid] === genToday() && !open;
+    var skip = (S.genPinSkip[gid] === genToday() || genGenInactive(G, gid)) && !open; // v1.5: no nudge for inactive customers
     var btns = '<div class="row gen-pinbtns">' + (genCanGps() ? '<button type="button" class="btn primary" id="genUseLoc">Use my location</button>' : '') +
       '<button type="button" class="btn" id="genMapPin">Drop pin on map</button>' +
       '<button type="button" class="btn" id="genPinLater">Not now</button></div>';
@@ -3129,7 +3172,7 @@
   function genLoopMap(G) {
     var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
     if (!loop) return genPick(G);
-    var stops = genOrdered(loop, d.order[loop.id]), pinned = [];
+    var stops = genActiveStops(G, loop, d.order[loop.id]), pinned = [];
     stops.forEach(function (s, i) { var g = s.gid && G.generators[s.gid]; if (g && g.pin) pinned.push({ n: i + 1, gid: s.gid, g: g }); });
     var linked = stops.filter(function (s) { return s.gid && G.generators[s.gid]; }).length;
     app.innerHTML = backLink('#tool/generators', 'Today\'s loop') + '<h1>' + esc(loop.name) + ' map</h1>' +
@@ -3151,27 +3194,6 @@
       });
       if (pts.length === 1) map.setView(pts[0], 16); else map.fitBounds(pts, { padding: [30, 30] });
     }).catch(function () { genMapFail(''); });
-  }
-  /** Home: the loop I picked for today (only when the tool is on and a loop is picked on this phone). */
-  function genHomeCard() {
-    if (!genOn() || !genDay().loopId) return;
-    genLoad(false).then(function (G) {
-      var d = genDay(), loop = genLoopById(G, d.loopId), jobs = $('#jobs');
-      if (!loop || !jobs || $('#genHome')) return;
-      var today = genToday(), linked = 0, done = 0, next = null;
-      genOrdered(loop, d.order[loop.id]).forEach(function (s) {
-        if (!s.gid || !G.generators[s.gid]) return;
-        linked++;
-        var st = genStatus(G, s.gid, today);
-        if (st.done || st.wait) done++; else if (!next) next = s.gid;
-      });
-      var card = document.createElement('div');
-      card.innerHTML = '<a class="card tapcard gen-home" id="genHome" href="#tool/generators"><div class="card-head"><h3>Generator loop: ' + esc(loop.name) + '</h3>' +
-        '<span class="tap" aria-hidden="true">&#8250;</span></div><div class="line"><div class="l"><span class="t" id="genHomeProgress">' + done + ' of ' + linked + ' done</span>' +
-        '<span class="s">' + esc(next ? 'Next: ' + genName(G, next) : 'All stops done') + '</span></div></div></a>';
-      var jc = jobs.closest ? jobs.closest('.card') : null;
-      if (jc && jc.parentNode) jc.parentNode.insertBefore(card.firstChild, jc);
-    }).catch(function () {});
   }
 
   /* ================= Materials picker (v1.2) =================

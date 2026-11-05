@@ -1097,6 +1097,7 @@
         case 'apiGenSetUsualOrder': return self.genUsualOrder(args[0], args[1], args[2]);
         case 'apiGenSetPin': return self.genSetPin(args[0]);
         case 'apiGenHistory': case 'apiGenSaveLoop': case 'apiGenAddStop': case 'apiGenRemoveStop': case 'apiGenAddGenerator':
+        case 'apiGenSetCustomerActive':
           return self.genPass(fn, args);
         default: return self.passthrough(fn, args);
       }
