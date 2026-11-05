@@ -14,6 +14,10 @@
  *    lost reply never makes a second slip or SLIP: event. Network trouble / 5xx = retry with backoff (30 s, 2 min, 5 min,
  *    then every 15 min); a refusal by the server = "Needs attention" with the server's message (no more retries until the
  *    tech edits it or taps Sync now). The finish-list part of a slip goes up after the slip, with its own ID.
+ *  - v1.4 generator service tool (only with GENERATOR_MODE mods / inapp): the generator copy (stops, details, search,
+ *    "Not serviced this year") works with no signal; a service is an outbox op (genService, client ID = SubmissionID) shown
+ *    as "Waiting to upload" until the server has it; "Make this the usual order" is an outbox op too (genLoopOrder), and so
+ *    is a generator's pin (genSetPin; the location is read only when the tech taps "Use my location", in the page).
  *  - Everything else (photos, work orders, moderator screens...): needs signal, with a clear message.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
@@ -41,6 +45,11 @@
   var SLIP_RETRY = /^(OFFLINE|ACCESS|SERVER|BUSY|RETRY|SETUP)$/;
   var SLIP_TIMEOUT_MS = 30000;
   var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
+  // v1.4 generator service tool
+  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent'];
+  var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
+  var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
+  var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function clone(v) { return v === undefined || v === null ? v : JSON.parse(JSON.stringify(v)); }
@@ -141,7 +150,7 @@
       if (!self.meta.deviceId) self.meta.deviceId = uuid();
       self.outbox = r[1] || []; self.problems = r[2] || [];
       self.slips = (r[3] || []).sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
-      return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].map(function (k) {
+      return Promise.all(KV_KEYS.map(function (k) {
         return self.store.get('kv', k).then(function (v) { if (v !== undefined) self.kv[k] = v; });
       }));
     }).then(function () { return self.saveMeta(); }).then(function () { return self; });
@@ -159,7 +168,7 @@
     if (self.meta.owner && self.meta.owner !== self.owner) {
       self.kv = {};
       self.meta.lastSync = 0; self.meta.lastFull = 0;
-      ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].forEach(function (k) { self.store.del('kv', k); });
+      KV_KEYS.forEach(function (k) { self.store.del('kv', k); });
     }
     self.meta.owner = self.owner;
     return self.saveMeta();
@@ -199,6 +208,8 @@
              Hours: hours, Note: String(p.note || '').trim(), Source: p.source === 'ClockButton' ? 'ClockButton' : 'Manual' };
   }
 
+  function isGenOp(op) { return /^gen/.test(String(op && op.type || '')); }
+
   function applyOp(list, op, me, offDayHours) {
     var p = op.entry || {}, at = stamp(new Date(op.createdAt || 0)), e;
     if ((op.type === 'save' && !op.ref) || op.type === 'clockIn') {
@@ -225,7 +236,7 @@
     var t = this.timeData();
     if (!t) return [];
     var list = clone(t.entries || []), me = t.email, off = t.offDayHours;
-    this.myOps().forEach(function (op) { applyOp(list, op, me, off); });
+    this.myOps().forEach(function (op) { if (!isGenOp(op)) applyOp(list, op, me, off); }); // v1.4: generator ops are not time
     if (t.allotment) TC.markOverAllotment(list, t.allotment, t.year);
     return list;
   };
@@ -376,7 +387,7 @@
   Engine.prototype.dropCaches = function () {
     var s = this.store;
     this.kv = {};
-    return Promise.all(['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads'].map(function (k) { return s.del('kv', k); }));
+    return Promise.all(KV_KEYS.map(function (k) { return s.del('kv', k); }));
   };
 
   Engine.prototype.noteFailure = function (e) {
@@ -422,7 +433,7 @@
     var ops = self.myOps().slice(0, BATCH);
     if (!ops.length && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
     if (round > 20) return Promise.resolve();
-    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, phoneTime: o.phoneTime }; });
+    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, phoneTime: o.phoneTime }; });
     return self.rcall('apiSync', [{ appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true }], 30000)
       .then(function (res) {
         var byCid = {}, gone = {}, stop = false, writes = [];
@@ -434,8 +445,9 @@
           if (r.status === 'done' || r.status === 'rejected') {
             gone[r.cid] = true;
             writes.push(self.store.del('outbox', r.cid));
+            if (isGenOp(o)) writes.push(self.genAfter(o, r)); // v1.4: the generator copy is out of date now
             if (r.status === 'rejected') {
-              var pr = { cid: r.cid, type: o.type, entry: o.entry, message: r.message || 'Not saved.', at: self.nowMs() };
+              var pr = { cid: r.cid, type: o.type, entry: o.entry, gen: o.gen, message: r.message || 'Not saved.', at: self.nowMs() };
               self.problems.push(pr);
               writes.push(self.store.put('problems', pr));
             }
@@ -459,7 +471,8 @@
   /** Everything the phone keeps for no-signal use (Api.gs apiOfflineSnapshot). */
   Engine.prototype.pullFull = function () {
     var self = this;
-    return self.rcall('apiOfflineSnapshot', [{}], 60000).then(function (s) {
+    var gv = self.genCache() ? self.genCache().data.version : ''; // v1.4: unchanged generator copy = {same: true}, no data
+    return self.rcall('apiOfflineSnapshot', [gv ? { genVersion: gv } : {}], 60000).then(function (s) {
       var at = self.nowMs(), w = [];
       if (s.boot) w.push(self.setKv('boot', s.boot));
       if (s.time) w.push(self.setKv('time', s.time));
@@ -468,6 +481,7 @@
       if (s.odds) w.push(self.setKv('odds', { at: at, data: s.odds }));
       if (s.finish) w.push(self.setKv('finish', { at: at, data: s.finish }));
       if (s.mats) w.push(self.setKv('mats', { at: at, data: s.mats })); // v1.2 materials picker list (search works with no signal)
+      if (s.gen) w.push(self.genStore(s.gen)); // v1.4 generator service tool (stops, search, not serviced this year with no signal)
       self.meta.lastFull = at; self.meta.lastSync = at;
       w.push(self.saveMeta());
       return Promise.all(w).then(function () { self.emit(); return s; });
@@ -852,6 +866,171 @@
     return self.slipDrop(cid).then(function () { self.emit(); });
   };
 
+  /* ---------------- v1.4 generator service tool ---------------- */
+  /*
+   * kv 'gen' = {at, data}: the server's generator copy (Generators.gs genSnapshot_; codes already stripped there). Stops,
+   * stop details, search and "Not serviced this year" work from it with no signal. A service is an outbox op (genService,
+   * client ID = SubmissionID): saved on the phone first, "Waiting to upload" until the server has it. "Make this the usual
+   * order" is an outbox op too (genLoopOrder), refused by the server if someone changed the loop meanwhile.
+   * kv 'genSent' = services that went up since the copy was made (shown as done until the next copy has them).
+   */
+  Engine.prototype.genCache = function () { return this.kv.gen && this.kv.gen.data ? this.kv.gen : null; };
+  /** A copy from the server: full data, {same} (unchanged), {enabled:false} (turned off: drop it) or {error} (keep ours). */
+  Engine.prototype.genStore = function (d) {
+    var self = this;
+    if (!d || typeof d !== 'object') return Promise.resolve();
+    if (d.enabled === false) {
+      if (d.error) return Promise.resolve();
+      delete self.kv.gen;
+      return self.store.del('kv', 'gen');
+    }
+    if (d.same) {
+      if (!self.genCache() || self.genCache().data.version !== d.version) return Promise.resolve();
+      self.kv.gen.at = self.nowMs();
+      return self.store.put('kv', self.kv.gen, 'gen');
+    }
+    if (!d.generators || !d.loops) return Promise.resolve();
+    var w = [self.setKv('gen', { at: self.nowMs(), data: d })];
+    var sent = (self.kv.genSent || []).filter(function (x) {
+      var h = (d.history && d.history[x.gid]) || [];
+      return x.day === d.today && !h.some(function (l) { return l.logId === x.logId; });
+    });
+    w.push(self.setKv('genSent', sent));
+    return Promise.all(w);
+  };
+  /** After the server finished a generator op: a service is remembered as done; the copy is refreshed on the next open. */
+  Engine.prototype.genAfter = function (o, r) {
+    var self = this;
+    if (self.kv.gen) self.kv.gen.at = 0;
+    if (r.status === 'done' && o.type === 'genSetPin' && r.gen && r.gen.applied && r.gen.pin) self.genPinIntoCache(o.gen.generatorId, r.gen.pin);
+    if (r.status !== 'done' || o.type !== 'genService') return Promise.resolve();
+    var g = o.gen || {}, sent = (self.kv.genSent || []).filter(function (x) { return x.cid !== o.cid; });
+    sent.push({ cid: o.cid, gid: g.generatorId, date: g.serviceDate, day: self.today(), logId: r.entryId || '', at: self.nowMs() });
+    return self.setKv('genSent', sent);
+  };
+  /** The copy + what only this phone knows: services waiting to upload, sent, refused; usual orders waiting. */
+  Engine.prototype.genView = function () {
+    var self = this, c = self.genCache();
+    var d = clone(c.data), pending = [], orders = [], pins = [];
+    self.myOps().forEach(function (o) {
+      if (o.type === 'genService') pending.push({ cid: o.cid, gid: o.gen.generatorId, date: o.gen.serviceDate, tries: o.tries || 0, lastError: o.lastError || '', at: o.createdAt });
+      if (o.type === 'genLoopOrder') orders.push({ cid: o.cid, loopId: o.gen.loopId, order: clone(o.gen.order) });
+      if (o.type === 'genSetPin') pins.push({ cid: o.cid, gid: o.gen.generatorId });
+    });
+    // a pin waiting to upload already shows (and Navigate already uses it) on this phone
+    self.myOps().forEach(function (o) {
+      var g = o.type === 'genSetPin' && d.generators[o.gen.generatorId];
+      if (!g) return;
+      g.pin = { lat: o.gen.lat, lng: o.gen.lng, source: o.gen.source, acc: o.gen.source === 'gps' ? o.gen.acc : null, by: 'you', date: localDs(new Date(o.createdAt || 0)), pending: true };
+      g.nav = genPinNav(g.pin);
+    });
+    d.local = { pending: pending, orders: orders, pins: pins, sent: clone(self.kv.genSent || []),
+                problems: self.problems.filter(isGenOp).map(function (p) { return { cid: p.cid, type: p.type, gid: p.gen && p.gen.generatorId, loopId: p.gen && p.gen.loopId, message: p.message }; }),
+                at: c.at, online: self.likelyOnline(), phone: true };
+    return d;
+  };
+  Engine.prototype.genSnapshot = function (force) {
+    var self = this, c = self.genCache();
+    if (c && ((!force && self.nowMs() - c.at < GEN_FRESH_MS) || !self.likelyOnline())) return Promise.resolve(self.genView());
+    if (!self.likelyOnline()) return Promise.reject(err(GEN_NO_COPY, 'OFFLINE'));
+    return self.rcall('apiGenSnapshot', [c ? c.data.version : ''], 30000).then(function (d) {
+      return self.genStore(d).then(function () {
+        if (!self.genCache()) throw err('The generator tool is not turned on for you yet.');
+        return self.genView();
+      });
+    }, function (e) {
+      if (NETWORKISH.test(e.code || '') && self.genCache()) return self.genView();
+      if (NETWORKISH.test(e.code || '')) throw err(GEN_NO_COPY, 'OFFLINE');
+      if (/not turned on/i.test(e.message || '')) { delete self.kv.gen; self.store.del('kv', 'gen'); }
+      throw e;
+    });
+  };
+  /** A service from the form: on the phone first, then up (now with signal, else later). Never a fake "saved". */
+  Engine.prototype.genSubmit = function (p) {
+    var self = this;
+    p = clone(p || {});
+    if (!p.generatorId) return Promise.reject(err('Pick the generator first.'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(p.serviceDate || ''))) p.serviceDate = self.today();
+    var op = { cid: uuid(), type: 'genService', gen: p };
+    p.submissionId = op.cid;
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid); // shown now, on the form
+        throw err(r.message || 'That service was not saved.');
+      }
+      if (r && r.status === 'done') return Object.assign({ ok: true, queued: false, logId: r.entryId }, clone(r.gen) || {});
+      return { ok: true, queued: true, cid: op.cid, message: GEN_QUEUED_MSG };
+    });
+  };
+  /** "Make this the usual order": refused (CHANGED: ...) if the loop changed since this phone's copy. */
+  Engine.prototype.genUsualOrder = function (loopId, baseSig, order) {
+    var self = this;
+    if (self.myOps().some(function (o) { return o.type === 'genLoopOrder' && o.gen.loopId === loopId; })) {
+      return Promise.reject(err('Your last usual order for this loop is still waiting to upload. Try again once it has synced.'));
+    }
+    var op = { cid: uuid(), type: 'genLoopOrder', gen: { loopId: String(loopId || ''), baseSig: String(baseSig || ''), order: clone(order || []) } };
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid);
+        if (self.kv.gen) self.kv.gen.at = 0;
+        throw err(r.message || 'The usual order was not saved.');
+      }
+      if (r && r.status === 'done') {
+        var c = self.genCache(), l = c && c.data.loops.filter(function (x) { return x.id === loopId; })[0];
+        if (l) {
+          var by = {};
+          l.stops.forEach(function (s) { by[s.key] = s; });
+          if (op.gen.order.every(function (k) { return by[k]; })) l.stops = op.gen.order.map(function (k) { return by[k]; });
+          if (r.gen && r.gen.sig) l.sig = r.gen.sig;
+          self.store.put('kv', c, 'gen');
+        }
+        return { ok: true, queued: false };
+      }
+      return { ok: true, queued: true, message: 'Saved on this phone. The usual order uploads when you have signal.' };
+    });
+  };
+  function genPinNav(pin) { return 'https://www.google.com/maps/dir/?api=1&destination=' + pin.lat + ',' + pin.lng; }
+  Engine.prototype.genPinIntoCache = function (gid, pin) {
+    var c = this.genCache(), g = c && c.data.generators[gid];
+    if (!g) return;
+    g.pin = clone(pin); g.nav = genPinNav(pin);
+    this.store.put('kv', c, 'gen');
+  };
+  /**
+   * A pin the tech set (GPS at the unit, or the map): saved on the phone first, then up. p = {generatorId, lat, lng,
+   * source: gps | map, acc (metres, gps), at (when captured)}. Only what the tech tapped; the phone keeps no other location.
+   */
+  Engine.prototype.genSetPin = function (p) {
+    var self = this;
+    p = p || {};
+    var lat = Number(p.lat), lng = Number(p.lng);
+    if (!p.generatorId) return Promise.reject(err('Pick the generator first.'));
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return Promise.reject(err('That pin has no valid location.'));
+    var gen = { generatorId: String(p.generatorId), lat: lat, lng: lng, source: p.source === 'map' ? 'map' : 'gps',
+                acc: p.source === 'map' ? '' : Number(p.acc), at: p.at || self.clock().toISOString() };
+    var op = { cid: uuid(), type: 'genSetPin', gen: gen };
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid);
+        throw err(r.message || 'That pin was not saved.');
+      }
+      if (r && r.status === 'done') return { ok: true, queued: false, applied: !!(r.gen && r.gen.applied), pin: r.gen && r.gen.pin };
+      return { ok: true, queued: true, message: 'Pin saved on this phone. It uploads when you have signal.' };
+    });
+  };
+  /** Needs signal: full history, loop changes, add a generator. A fresh copy that comes back is kept. */
+  Engine.prototype.genPass = function (fn, args) {
+    var self = this;
+    if (!self.likelyOnline()) return Promise.reject(err('OFFLINE: This needs signal. Stops, search and the service form work without it.', 'OFFLINE'));
+    return self.rcall(fn, args, 30000).then(function (r) {
+      if (r && r.snapshot) return self.genStore(r.snapshot).then(function () { r.snapshot = self.genCache() ? self.genView() : r.snapshot; return r; });
+      return r;
+    }, function (e) {
+      if (e.code === 'OFFLINE') throw err('OFFLINE: This needs signal. Stops, search and the service form work without it.', 'OFFLINE');
+      throw e;
+    });
+  };
+
   /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
   Engine.prototype.handle = function (fn, args) {
     var self = this;
@@ -912,11 +1091,18 @@
         case 'apiMaterials': return self.read(fn, args, self.reads().mats || (self.kv.mats ? { at: self.kv.mats.at, data: self.kv.mats.data } : null),
           function (d) { self.remember('mats', d); },
           'OFFLINE: No signal. Material suggestions show once this phone has the list (open the app once with signal).');
+        // v1.4 generator service tool: the phone's copy, services and the usual order through the outbox
+        case 'apiGenSnapshot': return self.genSnapshot(args[0] === 'refresh');
+        case 'apiGenSubmitService': return self.genSubmit(args[0]);
+        case 'apiGenSetUsualOrder': return self.genUsualOrder(args[0], args[1], args[2]);
+        case 'apiGenSetPin': return self.genSetPin(args[0]);
+        case 'apiGenHistory': case 'apiGenSaveLoop': case 'apiGenAddStop': case 'apiGenRemoveStop': case 'apiGenAddGenerator':
+          return self.genPass(fn, args);
         default: return self.passthrough(fn, args);
       }
     });
   };
 
-  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
+  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, GEN_QUEUED_MSG: GEN_QUEUED_MSG, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
            slipBackoff: slipBackoff, slipFailKind: slipFailKind, SLIP_BACKOFF_MS: SLIP_BACKOFF_MS, SLIP_QUEUED_MSG: SLIP_QUEUED_MSG };
 });

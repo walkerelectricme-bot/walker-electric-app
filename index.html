@@ -262,6 +262,34 @@
   #matKitList .line, #miIntoHits .line { width:100%; background:var(--paper); border:0; border-bottom:1px solid var(--soft); font:inherit; text-align:left; }
   #matSaveKit { display:block; margin:8px 0 4px; }
   .mlog .btn { flex:none; }
+  /* v1.4 generator service tool: big tap targets, status chips that read in sunlight, folded stop details */
+  .gen-tabs { margin:0 0 12px; }
+  .gen-tabs button { min-height:44px; }
+  .chip.gen-wait { background:#fff4e0; border-color:#f29900; color:#7a4a00; }
+  .chip.gen-bad { background:#fde8e8; border-color:#d93025; color:#a50e0e; }
+  .note.gen-badnote { background:#fde8e8; border-left-color:#d93025; }
+  .note.gen-offline { background:#fff4e0; }
+  .gen-chips { margin-top:4px; gap:6px; }
+  .gen-stop { cursor:pointer; min-height:56px; }
+  .gen-stop.raw .t { color:var(--muted); }
+  button.gen-loop, button.gen-acpick { width:100%; background:none; border:none; border-bottom:1px solid var(--soft); font:inherit; text-align:left; cursor:pointer; min-height:56px; }
+  .gen-fold summary { cursor:pointer; min-height:44px; display:flex; align-items:center; gap:8px; list-style:none; }
+  .gen-fold summary::-webkit-details-marker { display:none; }
+  .gen-fold summary:before { content:"\203A"; font-size:22px; transition:transform .15s; display:inline-block; }
+  .gen-fold[open] summary:before { transform:rotate(90deg); }
+  .gen-yn { padding:8px 0; border-bottom:1px solid var(--soft); }
+  .gen-yn .t { font-weight:600; margin-bottom:6px; }
+  .gen-ord .btn.small { min-width:48px; min-height:44px; font-size:20px; }
+  .gen-home { display:block; text-decoration:none; color:var(--ink); }
+  .gen-old { text-align:center; margin-top:16px; }
+  /* v1.4 GPS pin and maps (Leaflet loads only when a map opens) */
+  .gen-pinbtns { margin-top:8px; } .gen-pinbtns .btn { flex:1 1 140px; }
+  .gen-mapwrap { position:relative; margin:0 0 12px; }
+  .gen-map { height:62vh; min-height:300px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--soft); touch-action:none; }
+  .gen-cross { position:absolute; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; pointer-events:none; z-index:650; }
+  .gen-cross:before, .gen-cross:after { content:""; position:absolute; background:#d93025; box-shadow:0 0 0 1px #fff; }
+  .gen-cross:before { left:21px; top:0; width:2px; height:44px; }
+  .gen-cross:after { top:21px; left:0; height:2px; width:44px; }
 </style>
 
   <link rel="stylesheet" href="css/shell.css">
@@ -708,6 +736,7 @@
     if (S.glowNext) { var g = S.glowNext; S.glowNext = ''; setTimeout(function () { glow($(g)); }, 30); }
     loadJobs(S.homeDay);
     loadWeekStrip();
+    genHomeCard(); // v1.4 gen-hook
     // fresh numbers (a crew mate's slip may have earned me a point); my own only
     if (S.points) call('apiPoints').then(function (p) { S.points = p; drawPill(); if ($('#streakRisk')) drawRisk(); }).catch(function () {});
   }
@@ -1086,13 +1115,16 @@
   function renderTools() {
     matSyncTool(); // v1.2 mat-hook
     slipQSyncTool(); // v1.3 slipq-hook
+    genSyncTool(); // v1.4 gen-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
       '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
+    genToolsNote(); // v1.4 gen-hook
   }
   function renderToolPage(id, a, b) {
     matSyncTool(); // v1.2 mat-hook
     slipQSyncTool(); // v1.3 slipq-hook
+    genSyncTool(); // v1.4 gen-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
     if (t.action.type === 'link') { go('#tools'); return; }
@@ -2417,6 +2449,729 @@
         toast('Slip for ' + sqTitle(it) + ' needs attention: ' + (info && info.message || 'the office refused it') + ' (Tools > Slips waiting to sync)', 9000);
       }
     });
+  }
+
+  /* ================= Generator service (v1.4) =================
+   * Tools > Generator service, in the app (GENERATOR-PLAN.md). Shown only when the server says so (S.boot.generatorMode
+   * 'inapp': Settings > GENERATOR_MODE inapp = everyone, mods = moderators only, link = nobody: the tile opens the old
+   * Generator Service app as before). Its one-line hooks end in "// v1.4 gen-hook" (Tools page, a tool page, Home).
+   *  - Today's loop: each tech picks their own loop; remembered on this phone for today. Stops with status chips
+   *    (Done today / Waiting to upload / Not saved), Navigate (Google Maps, the address on file; no GPS anywhere).
+   *  - A stop: Customer / Generator / History, folded. The service form: checklist Yes/No, parts, engine hours, error
+   *    codes, notes, missing generator info (fills blanks only). Photos: Tools > Picture gallery (needs signal).
+   *  - Search (works with no signal) and "Not serviced this year" (by town A to Z, names A to Z inside each town).
+   *  - Reorder: "Just today" (this phone only) or "Make this the usual order" (refused if someone changed the loop meanwhile).
+   *  - Loops and Add a generator: need signal.
+   *  - GPS pin (approved Nov 4): where the unit sits on the property. On a stop with no pin (and after a service there):
+   *    "Use my location" (the phone's GPS, read ONLY on that tap, high accuracy; over 50 m = warn, try again or use the
+   *    map), "Drop pin on map" (needs signal: Leaflet + OpenStreetMap, loaded only then) or "Not now" (for this visit).
+   *    A GPS pin works with no signal (it waits to upload). Navigate goes to the pin when there is one. No background
+   *    location, no tracking: nothing else ever reads or keeps the phone's location. "Use my location" shows only in the
+   *    phone app (the GitHub Pages page itself, https, top level), not on the Apps Script web page (a sandboxed frame).
+   *  - Map of today's loop (pinned stops only; needs signal).
+   * On the phone app the generator copy, services and the usual order go through the offline engine (engine.js); on the
+   * Apps Script web page the same calls go straight to the server. Access codes never reach the phone (Generators.gs).
+   */
+  var GEN_ORIG_TOOL = null;
+  var GEN_TOOL = { title: 'Generator service', subtitle: 'Today\'s loop, services and generator records (works without signal)', icon: 'generator',
+    action: { type: 'page', render: function (a, b) { renderGen(a, b); } } };
+  function genOn() { return !!(S.boot && S.boot.generatorMode === 'inapp'); }
+  /** The Tools tile: the in-app tool when it is on for me, else the old app link (unchanged). */
+  function genSyncTool() {
+    var t = TOOLS.filter(function (x) { return x.id === 'generators'; })[0];
+    if (!t) return;
+    if (!GEN_ORIG_TOOL) GEN_ORIG_TOOL = { title: t.title, subtitle: t.subtitle, icon: t.icon, action: t.action };
+    var src = genOn() ? GEN_TOOL : GEN_ORIG_TOOL;
+    t.title = src.title; t.subtitle = src.subtitle; t.icon = src.icon; t.action = src.action;
+  }
+  function genToolsNote() {
+    if (!genOn()) return;
+    var n = $all('#app > p.muted.small').filter(function (p) { return /Generator Service app opens in a new tab/.test(p.textContent); })[0];
+    if (n) n.textContent = 'Generator service works without signal: today\'s loop, search and the service form. Loops and new generators need signal.';
+  }
+  function genToday() {
+    if (S.tc && S.tc.today) return S.tc.today;
+    if (S.boot && S.boot.today) return S.boot.today;
+    var d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  /** This phone, today: {date, loopId, order: {loopId: [stop keys]}} (a new day starts empty). */
+  function genDay() {
+    var d = null;
+    try { d = JSON.parse(lsGet('gen.day') || 'null'); } catch (e) { d = null; }
+    if (!d || d.date !== genToday()) d = { date: genToday(), loopId: '', order: {} };
+    if (!d.order) d.order = {};
+    return d;
+  }
+  function genDaySave(d) { lsSet('gen.day', JSON.stringify(d)); }
+  function genLoad(force) {
+    return call('apiGenSnapshot', force ? 'refresh' : '').then(function (g) { S.gen = g; return g; });
+  }
+  function genEnc(s) { return encodeURIComponent(String(s || '')); }
+  function genName(G, gid) {
+    var g = G.generators[gid], c = g && G.customers[g.cid];
+    return c ? c.name : (g ? gid : '');
+  }
+  function genCollator(a, b) { return String(a).localeCompare(String(b), 'en', { sensitivity: 'base', numeric: true }); }
+
+  /* ---- pure helpers (window.WES_GEN_TEST) ---- */
+  /** The stop status on this phone: waiting / problem / done (and who did it today). */
+  function genStatus(G, gid, today) {
+    var L = G.local || {}, st = { wait: false, bad: '', done: false, by: [] };
+    (L.pending || []).forEach(function (p) { if (p.gid === gid) st.wait = true; });
+    (L.problems || []).forEach(function (p) { if (p.gid === gid && p.type === 'genService') st.bad = p.message; });
+    (L.sent || []).forEach(function (p) { if (p.gid === gid && p.date === today) st.done = true; });
+    (G.done && G.today === today && G.done[gid] || []).forEach(function (w) { st.done = true; if (st.by.indexOf(w) < 0) st.by.push(w); });
+    return st;
+  }
+  /** The loop's stops in the order for today: this phone's "Just today" order if any (new stops at the end), else the usual. */
+  function genOrdered(loop, dayOrder) {
+    var stops = loop.stops.slice();
+    if (!dayOrder || !dayOrder.length) return stops;
+    var by = {}, out = [];
+    stops.forEach(function (s) { by[s.key] = s; });
+    dayOrder.forEach(function (k) { if (by[k]) { out.push(by[k]); delete by[k]; } });
+    stops.forEach(function (s) { if (by[s.key]) out.push(s); });
+    return out;
+  }
+  /** Was it serviced in `year`? The server copy (any ServiceLog row that year) or a service saved on this phone. */
+  function genServicedIn(G, gid, year) {
+    var g = G.generators[gid];
+    if (g && Number(g.lastYear) === year) return true;
+    var L = G.local || {};
+    return (L.pending || []).concat(L.sent || []).some(function (p) { return p.gid === gid && Number(String(p.date || '').slice(0, 4)) === year; });
+  }
+  /**
+   * Every generator with no service record in `year`, grouped by town A to Z ("(No town)" last), customer names A to Z
+   * inside each town (then generator ID). Inactive customers are left out and counted.
+   */
+  function genNotServiced(G, year) {
+    var groups = {}, inactive = 0, total = 0;
+    Object.keys(G.generators).forEach(function (gid) {
+      if (genServicedIn(G, gid, year)) return;
+      var g = G.generators[gid], c = G.customers[g.cid] || null;
+      if (c && c.active === false) { inactive++; return; }
+      var town = String(c && c.town || '').trim(), key = town || '(No town)';
+      (groups[key] = groups[key] || []).push({ gid: gid, name: c ? c.name : gid, address: g.address || (c && c.address) || '', last: g.last || '', town: town });
+      total++;
+    });
+    var towns = Object.keys(groups).sort(function (a, b) {
+      if (a === '(No town)') return 1;
+      if (b === '(No town)') return -1;
+      return genCollator(a, b);
+    });
+    return { year: year, total: total, inactive: inactive, groups: towns.map(function (t) {
+      return { town: t, items: groups[t].sort(function (a, b) { return genCollator(a.name, b.name) || genCollator(a.gid, b.gid); }) };
+    }) };
+  }
+  /** Search the phone's copy: every word must match the name, address, town, phone, IDs, brand, model or serial. */
+  function genSearch(G, q) {
+    var words = String(q || '').toLowerCase().split(/\s+/).filter(String);
+    if (!words.length) return [];
+    var out = [];
+    Object.keys(G.generators).forEach(function (gid) {
+      var g = G.generators[gid], c = G.customers[g.cid] || {};
+      var hay = [gid, g.cid, c.name, c.address, c.town, c.phone, String(c.phone || '').replace(/\D/g, ''), g.address, g.brand, g.model, g.serial].join(' ').toLowerCase();
+      if (words.every(function (w) { return hay.indexOf(w) >= 0; })) out.push({ gid: gid, name: c.name || gid, address: g.address || c.address || '', town: c.town || '', active: c.active !== false });
+    });
+    return out.sort(function (a, b) { return genCollator(a.name, b.name) || genCollator(a.gid, b.gid); }).slice(0, 60);
+  }
+  /** A quick check on the phone (the server checks again): access codes, WiFi passwords and key locations stay out. */
+  function genLooksLikeCode(text) {
+    return String(text || '').split('\n').some(function (l) {
+      return /\b(wi-?fi|password|passcode|passwd|pw)\b/i.test(l) ||
+        /\b(gate|door|garage|alarm|lock ?box|keypad|entry|access|security)\b[^\n]{0,20}?(\bcode\b|\bcombo\b|\bpin\b|#|\d{3,})/i.test(l) ||
+        /\bkeys?\b[^\n]{0,20}\b(under|behind|above|inside|hidden|in the|on the)\b/i.test(l);
+    });
+  }
+  window.WES_GEN_TEST = { notServiced: genNotServiced, search: genSearch, ordered: genOrdered, status: genStatus, looksLikeCode: genLooksLikeCode };
+
+  /* ---- screens ---- */
+  function genChips(st) {
+    return (st.bad ? '<span class="chip gen-bad">Not saved</span>' : '') +
+      (st.wait ? '<span class="chip gen-wait">Waiting to upload</span>' : '') +
+      (!st.wait && st.done ? '<span class="chip solid gen-done">' + esc(st.by.length ? 'Done today: ' + st.by.join(', ') : 'Done today') + '</span>' : '');
+  }
+  function genTabs(on) {
+    var t = [['', 'Today\'s loop'], ['search', 'Search'], ['loops', 'Loops']];
+    return '<div class="seg gen-tabs" role="tablist">' + t.map(function (x) {
+      return '<button type="button" class="' + (x[0] === on ? 'on' : '') + '" data-go="#tool/generators' + (x[0] ? '/' + x[0] : '') + '">' + esc(x[1]) + '</button>';
+    }).join('') + '</div>';
+  }
+  function genWire() {
+    $all('[data-go]').forEach(function (b) { b.onclick = function () { go(b.getAttribute('data-go')); }; });
+  }
+  function genHead(G, on) {
+    var L = G.local || {}, bits = [];
+    if (L.phone && !L.online) bits.push('No signal: showing this phone\'s copy');
+    if (L.pending && L.pending.length) bits.push(L.pending.length + (L.pending.length === 1 ? ' service' : ' services') + ' waiting to upload');
+    return backLink('#tools', 'Tools') + '<h1>Generator service</h1>' + genTabs(on) +
+      (bits.length ? '<p class="note gen-offline" id="genOffline">' + esc(bits.join(' \u00b7 ')) + '</p>' : '') +
+      ((L.problems || []).length ? '<div class="note gen-badnote" id="genProblems">' + L.problems.map(function (p) {
+        return '<div>' + esc(p.type === 'genService' ? 'Service for ' + genName(G, p.gid) + ' (' + (p.gid || '') + ') was not saved: ' :
+          p.type === 'genSetPin' ? 'Pin for ' + genName(G, p.gid) + ' (' + (p.gid || '') + ') was not saved: ' : 'Usual order not saved: ') + esc(p.message) + '</div>';
+      }).join('') + '<p class="small">Fix it and save again. Tap the sync line to clear this.</p></div>' : '');
+  }
+  function genFoot() {
+    var u = S.boot && S.boot.app && S.boot.app.generatorAppUrl;
+    return u ? '<p class="muted small gen-old"><a target="_blank" rel="noopener" href="' + esc(u) + '">Open the old Generator Service app</a></p>' : '';
+  }
+  function renderGen(a, b) {
+    loading();
+    var force = a === 'refresh';
+    if (force) a = '';
+    genLoad(force).then(function (G) {
+      if (!$('#app')) return;
+      switch (a || '') {
+        case 'pick': return genPick(G);
+        case 'stop': return genStop(G, b);
+        case 'service': return genServiceForm(G, b);
+        case 'search': return genSearchPage(G);
+        case 'notdone': return genNotDonePage(G);
+        case 'reorder': return genReorder(G, '');
+        case 'loops': return genLoops(G);
+        case 'loop': return genLoopEdit(G, b);
+        case 'add': return genAddPage(G);
+        case 'pin': return genPinMap(G, b);
+        case 'map': return genLoopMap(G);
+        default: return genTodayPage(G);
+      }
+    }).catch(function (err) {
+      app.innerHTML = backLink('#tools', 'Tools') + '<div class="card"><h2>Generator service</h2><p>' + esc(errMsg(err)) + '</p>' +
+        '<button class="btn block" id="genRetry">Try again</button></div>' + genFoot();
+      $('#genRetry').onclick = function () { renderGen(a, b); };
+    });
+  }
+  function genLoopById(G, id) { return G.loops.filter(function (l) { return l.id === id; })[0] || null; }
+  function genPick(G) {
+    var d = genDay(), act = G.loops.filter(function (l) { return l.active; }), off = G.loops.filter(function (l) { return !l.active; });
+    var row = function (l) {
+      return '<button type="button" class="line gen-loop" data-loop="' + esc(l.id) + '"><span class="l"><span class="t">' + esc(l.name) + '</span>' +
+        '<span class="s">' + esc((l.area ? l.area + ' \u00b7 ' : '') + l.stops.length + (l.stops.length === 1 ? ' stop' : ' stops')) + '</span></span>' +
+        '<span class="r">' + (d.loopId === l.id ? '<span class="chip solid">Today</span>' : '') + '<span class="tap" aria-hidden="true">&#8250;</span></span></button>';
+    };
+    app.innerHTML = genHead(G, '') + '<div class="card"><h3>Which loop are you doing today?</h3>' +
+      (act.length ? act.map(row).join('') : '<p class="muted">No loops yet.</p>') +
+      (off.length ? '<details class="gen-fold"><summary>Loops turned off (' + off.length + ')</summary>' + off.map(row).join('') + '</details>' : '') +
+      '<p class="muted small">Only this phone remembers your pick, for today.</p></div>' + genFoot();
+    genWire();
+    $all('.gen-loop').forEach(function (btn) {
+      btn.onclick = function () { var dd = genDay(); dd.loopId = btn.getAttribute('data-loop'); genDaySave(dd); go('#tool/generators'); };
+    });
+  }
+  function genTodayPage(G) {
+    var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
+    if (!loop) return genPick(G);
+    var today = genToday(), stops = genOrdered(loop, d.order[loop.id]), done = 0;
+    var rows = stops.map(function (s, i) {
+      if (!s.gid || !G.generators[s.gid]) {
+        return '<div class="line gen-stop raw"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(s.raw || 'Stop') + '</span>' +
+          '<span class="s">Not linked to a generator record (ask the office)</span></div></div>';
+      }
+      var g = G.generators[s.gid], c = G.customers[g.cid] || {}, st = genStatus(G, s.gid, today);
+      if (st.done || st.wait) done++;
+      return '<div class="line gen-stop" role="button" tabindex="0" data-gid="' + esc(s.gid) + '"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(c.name || s.gid) + '</span>' +
+        '<span class="s">' + esc(g.address || c.address || '') + (g.battery && g.battery.warn ? ' \u00b7 battery ' + esc(g.battery.label) : '') + '</span>' +
+        '<span class="row gen-chips">' + genChips(st) + '</span></div>' +
+        '<span class="r row">' + navBtn(g.nav) + '<span class="tap" aria-hidden="true">&#8250;</span></span></div>';
+    }).join('');
+    var linked = stops.filter(function (s) { return s.gid && G.generators[s.gid]; }).length;
+    app.innerHTML = genHead(G, '') + '<div class="card" id="genToday"><div class="card-head"><h3 id="genLoopName">' + esc(loop.name) + '</h3>' +
+      '<span class="muted small" id="genProgress">' + done + ' of ' + linked + ' done</span></div>' +
+      (d.order[loop.id] ? '<p class="note small" id="genJustToday">Your order for today (this phone only).</p>' : '') +
+      (loop.notes ? '<p class="muted small">' + esc(loop.notes) + '</p>' : '') +
+      (rows || '<p class="muted">No stops on this loop yet.</p>') +
+      '<div class="actions"><button class="btn small" id="genChange" data-go="#tool/generators/pick">Change loop</button>' +
+      '<button class="btn small" id="genReorderBtn" data-go="#tool/generators/reorder">Reorder</button>' +
+      '<button class="btn small" id="genMapBtn" data-go="#tool/generators/map">Map</button>' +
+      '<button class="btn small" id="genRefresh">Refresh</button></div></div>' + genFoot();
+    genWire();
+    $('#genRefresh').onclick = function () { renderGen('refresh'); };
+    $all('.gen-stop[data-gid]').forEach(function (row) {
+      var open = function () { go('#tool/generators/stop/' + genEnc(row.getAttribute('data-gid'))); };
+      row.onclick = function (ev) { if (ev.target.closest && ev.target.closest('a')) return; open(); };
+      row.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } };
+    });
+  }
+  function genKv(label, v, id) {
+    return v === '' || v == null ? '' : '<div class="line"><div class="l"><span class="s">' + esc(label) + '</span><span class="t"' + (id ? ' id="' + id + '"' : '') + '>' + esc(v) + '</span></div></div>';
+  }
+  function genMultiline(t) { return esc(t).replace(/\n/g, '<br>'); }
+  function genHistHtml(list) {
+    if (!list || !list.length) return '<p class="muted">No services on record.</p>';
+    return list.map(function (h) {
+      var parts = (h.parts || []).map(function (k) { return { OilChanged: 'oil', FilterChanged: 'oil filter', BatteryReplaced: 'battery', PlugsChanged: 'plugs' }[k] || k; });
+      return '<div class="line gen-hist"><div class="l"><span class="t">' + esc(h.date || (h.year ? h.year + ' (year only)' : '?')) + (h.tech ? ' \u00b7 ' + esc(h.tech) : '') + '</span>' +
+        '<span class="s">' + esc([parts.length ? 'Replaced: ' + parts.join(', ') : '', h.hours ? h.hours + ' h' : '', h.errorCodes ? 'Error codes: ' + h.errorCodes : ''].filter(String).join(' \u00b7 ')) + '</span>' +
+        (h.notes ? '<span class="s">' + genMultiline(h.notes) + '</span>' : '') + '</div><span class="r muted small">' + esc(h.logId) + '</span></div>';
+    }).join('');
+  }
+  function genStop(G, gid) {
+    var g = G.generators[gid];
+    if (!g) { app.innerHTML = genHead(G, '') + '<div class="card"><p>That generator is not on this phone\'s list. Tap Refresh with signal.</p></div>'; genWire(); return; }
+    var c = G.customers[g.cid] || {}, st = genStatus(G, gid, genToday()), hist = G.history[gid] || [];
+    var fl = G.fields || [];
+    var missing = (g.missing || []).map(function (k) { var f = fl.filter(function (x) { return x.key === k; })[0]; return f ? f.label : k; });
+    app.innerHTML = backLink('#tool/generators', 'Today\'s loop') +
+      '<h1 id="genStopName">' + esc(c.name || gid) + '</h1><p class="sub">' + esc(g.address || c.address || '') + '</p>' +
+      '<div class="row gen-chips" id="genStopChips">' + genChips(st) + (st.bad ? '<p class="note gen-badnote">' + esc(st.bad) + '</p>' : '') + '</div>' +
+      '<div class="actions">' + navBtn(g.nav, 'genNav') + '<a class="btn primary" id="genStartService" href="#tool/generators/service/' + genEnc(gid) + '">Service this generator</a></div>' +
+      '<div class="card gen-pin" id="genPinCard"></div>' +
+      '<details class="card gen-fold" id="genCust"><summary><b>Customer</b></summary>' +
+        genKv('Name', c.name) + (c.phone ? '<div class="line"><div class="l"><span class="s">Phone</span><a class="t" href="tel:' + esc(String(c.phone).replace(/[^\d+]/g, '')) + '">' + esc(c.phone) + '</a></div></div>' : '') +
+        genKv('Address', c.address) + (c.access ? '<div class="line"><div class="l"><span class="s">Access</span><span class="t" id="genAccess">' + genMultiline(c.access) + '</span></div></div>' : '') +
+        (c.flags ? '<div class="line"><div class="l"><span class="s">Flags</span><span class="t">' + genMultiline(c.flags) + '</span></div></div>' : '') +
+        (c.notes ? '<div class="line"><div class="l"><span class="s">Notes</span><span class="t" id="genCustNotes">' + genMultiline(c.notes) + '</span></div></div>' : '') +
+        (c.active === false ? '<p class="note">This customer is marked inactive.</p>' : '') + '</details>' +
+      '<details class="card gen-fold" id="genGen"><summary><b>Generator</b> <span class="muted small">' + esc(gid) + '</span></summary>' +
+        genKv('Brand / make', g.brand) + genKv('Model', g.model) + genKv('Size (kW)', g.kW) + genKv('Serial number', g.serial) + genKv('Install year', g.installYear) +
+        genKv('Battery', g.battery ? g.battery.label + (g.battery.warn ? ' (3+ years: check it)' : '') : '', 'genBattery') + genKv('Oil filter part #', g.oilFilter) +
+        genKv('Site address', g.siteAddress) + (g.notes ? '<div class="line"><div class="l"><span class="s">Notes</span><span class="t" id="genGenNotes">' + genMultiline(g.notes) + '</span></div></div>' : '') +
+        (missing.length ? '<p class="note small">Missing: ' + esc(missing.join(', ')) + '. You can fill these in on the service form.</p>' : '') + '</details>' +
+      '<details class="card gen-fold" id="genHist"><summary><b>History</b> <span class="muted small">' + esc(g.last ? 'last: ' + g.last : 'none') + '</span></summary>' +
+        '<div id="genHistList">' + genHistHtml(hist) + '</div>' +
+        '<button class="btn small" id="genFullHist">Full history (needs signal)</button></details>' + genFoot();
+    genPinCard(G, gid);
+    $('#genFullHist').onclick = function () {
+      var btn = $('#genFullHist'); btn.disabled = true;
+      call('apiGenHistory', gid).then(function (r) { $('#genHistList').innerHTML = genHistHtml(r.history); btn.classList.add('hidden'); })
+        .catch(function (err) { btn.disabled = false; fail(err); });
+    };
+  }
+  function genYesNo(name, label) {
+    return '<div class="gen-yn" data-k="' + esc(name) + '"><div class="t">' + esc(label) + '</div><div class="seg">' +
+      '<button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>';
+  }
+  function genServiceForm(G, gid) {
+    var g = G.generators[gid];
+    if (!g) return genStop(G, gid);
+    var c = G.customers[g.cid] || {}, ck = G.checklist || { steps: [], parts: [], info: [] };
+    var fields = (G.fields || []).filter(function (f) { return (g.missing || []).indexOf(f.key) >= 0; });
+    app.innerHTML = backLink('#tool/generators/stop/' + genEnc(gid), c.name || gid) +
+      '<h1>Service</h1><p class="sub">' + esc((c.name || '') + ' \u00b7 ' + gid) + '</p>' +
+      '<form id="genForm" class="card" novalidate>' +
+      '<label class="field" for="genDate">Service date</label><input type="date" id="genDate" value="' + esc(genToday()) + '" max="' + esc(genToday()) + '">' +
+      '<h3 style="margin-top:16px">Checklist</h3>' + ck.steps.map(function (s) { return genYesNo('c:' + s.key, s.n + '. ' + s.text); }).join('') +
+      (ck.info.length ? '<p class="muted small">' + ck.info.map(esc).join('<br>') + '</p>' : '') +
+      '<h3 style="margin-top:16px">Parts</h3>' + ck.parts.map(function (p) { return genYesNo('p:' + p.key, p.text); }).join('') +
+      '<label class="field" for="genHours">Engine hours</label><input type="text" inputmode="decimal" id="genHours" autocomplete="off">' +
+      '<label class="field" for="genCodes">Error codes</label><input type="text" id="genCodes" autocomplete="off" placeholder="Generator fault codes, like 1300">' +
+      '<label class="field" for="genNotes">Notes</label><textarea id="genNotes" placeholder="What you found and did. No door, gate or alarm codes, WiFi passwords or key spots."></textarea>' +
+      (fields.length ? '<details class="gen-fold" id="genMissing"><summary><b>Fill in missing info</b> <span class="muted small">(' + fields.length + ' blank)</span></summary>' +
+        '<p class="muted small">Only blank fields are filled in. Nothing already on file is changed.</p>' +
+        fields.map(function (f) {
+          return '<label class="field" for="genF_' + esc(f.key) + '">' + esc(f.label) + '</label><input type="text" id="genF_' + esc(f.key) + '" data-f="' + esc(f.key) + '" autocomplete="off"' +
+            (f.type === 'number' || f.type === 'year' ? ' inputmode="decimal"' : '') + (f.type === 'battery' ? ' placeholder="Like 5/2024"' : '') + '>';
+        }).join('') + '</details>' : '') +
+      '<p class="note small" id="genPhotos"><b>Photos need signal.</b> They are not part of this form: add them in <a href="#tool/gallery">Tools &gt; Picture gallery</a> when you have signal.</p>' +
+      '<button class="btn primary block" id="genSave" type="submit">Save service</button></form>';
+    $all('.gen-yn').forEach(function (yn) {
+      $all('button', yn).forEach(function (b) {
+        b.onclick = function () {
+          var was = b.classList.contains('on');
+          $all('button', yn).forEach(function (x) { x.classList.remove('on'); });
+          if (!was) b.classList.add('on');
+        };
+      });
+    });
+    $('#genForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var checks = {}, parts = {}, info = {};
+      $all('.gen-yn').forEach(function (yn) {
+        var k = yn.getAttribute('data-k'), on = $('button.on', yn), v = on ? on.getAttribute('data-v') : '';
+        if (!v) return;
+        if (k.indexOf('c:') === 0) checks[k.slice(2)] = v; else parts[k.slice(2)] = v;
+      });
+      $all('#genMissing input[data-f]').forEach(function (i) { if (i.value.trim()) info[i.getAttribute('data-f')] = i.value.trim(); });
+      var p = { generatorId: gid, serviceDate: $('#genDate').value || genToday(), checks: checks, parts: parts,
+                engineHours: $('#genHours').value.trim(), errorCodes: $('#genCodes').value.trim(), notes: $('#genNotes').value.trim(), genInfo: info };
+      if (p.serviceDate > genToday()) { toast('The service date can\'t be in the future.', 5000); return; }
+      if (p.engineHours && !/^\d{1,6}(\.\d{1,2})?$/.test(p.engineHours)) { toast('Engine hours must be a number.', 5000); return; }
+      var all = [p.notes].concat(Object.keys(info).map(function (k) { return info[k]; }));
+      if (all.some(genLooksLikeCode)) { toast('Notes can\'t hold door, alarm or gate codes, WiFi passwords or where a key is kept. Leave them out (the office keeps them).', 7000); return; }
+      if (p.errorCodes && (genLooksLikeCode(p.errorCodes) || !/^[A-Za-z0-9 ,.;:\/#()-]*$/.test(p.errorCodes))) { toast('Error codes is for generator fault codes (like 1300).', 6000); return; }
+      var btn = $('#genSave'); btn.disabled = true; btn.textContent = 'Saving\u2026';
+      call('apiGenSubmitService', p).then(function (r) {
+        if (r.queued) toast(r.message || 'Saved on this phone. Waiting to upload.', 7000);
+        else {
+          var m = 'Service saved (' + (r.logId || '') + ').';
+          if (r.genInfoFilled && r.genInfoFilled.length) m += ' Added: ' + r.genInfoFilled.join(', ') + '.';
+          if (r.genInfoSkipped && r.genInfoSkipped.length) m += ' Not changed: ' + r.genInfoSkipped.join(', ') + '.';
+          if (r.batteryUpdated) m += ' Battery date updated.';
+          if (r.alsoToday && r.alsoToday.length) m += ' Note: ' + r.alsoToday.join(', ') + ' also serviced it today.';
+          if (r.duplicate) m = 'Already saved (' + (r.logId || '') + ').';
+          toast(m, 7000);
+        }
+        // no pin yet: back to the stop, where the pin nudge shows (never blocks the service: it is already saved)
+        go(g.pin ? '#tool/generators' : '#tool/generators/stop/' + genEnc(gid));
+      }).catch(function (err) { btn.disabled = false; btn.textContent = 'Save service'; fail(err); });
+    };
+  }
+  function genResultRows(list, showTown) {
+    return list.map(function (x) {
+      return '<a class="line gen-res" href="#tool/generators/stop/' + genEnc(x.gid) + '"><span class="l"><span class="t">' + esc(x.name) + '</span>' +
+        '<span class="s">' + esc([x.address, showTown && x.town && (x.address || '').indexOf(x.town) < 0 ? x.town : '', x.gid].filter(String).join(' \u00b7 ')) +
+        (x.active === false ? ' \u00b7 inactive' : '') + (x.last !== undefined ? ' \u00b7 last: ' + esc(x.last || 'never') : '') + '</span></span><span class="tap" aria-hidden="true">&#8250;</span></a>';
+    }).join('');
+  }
+  function genSearchPage(G) {
+    app.innerHTML = genHead(G, 'search') + '<div class="card"><label class="field" for="genQ">Search name, address, town, phone or serial</label>' +
+      '<input type="text" id="genQ" autocomplete="off" value="' + esc(S.genQ || '') + '"><div id="genResults"></div></div>' +
+      '<button class="btn block" id="genNotDone" data-go="#tool/generators/notdone">Not serviced this year</button>' +
+      '<p class="muted small">Search and this list work without signal.</p>' +
+      '<a class="btn block" id="genAddBtn" href="#tool/generators/add" style="margin-top:12px">Add a generator (needs signal)</a>' + genFoot();
+    genWire();
+    var draw = function () {
+      S.genQ = $('#genQ').value;
+      var r = genSearch(G, S.genQ);
+      $('#genResults').innerHTML = S.genQ.trim() ? (r.length ? genResultRows(r, true) : '<p class="muted">No match on this phone\'s list.</p>') : '';
+    };
+    $('#genQ').oninput = draw;
+    draw();
+  }
+  function genNotDonePage(G) {
+    var year = Number(genToday().slice(0, 4)), r = genNotServiced(G, year);
+    app.innerHTML = backLink('#tool/generators/search', 'Search') + '<h1>Not serviced in ' + year + '</h1>' +
+      '<p class="sub" id="genNdCount">' + r.total + (r.total === 1 ? ' generator' : ' generators') + ' with no service record this year' +
+      (r.inactive ? ' (' + r.inactive + ' for inactive customers not shown)' : '') + '</p>' +
+      r.groups.map(function (gr) {
+        return '<div class="card gen-town"><div class="card-head"><h3>' + esc(gr.town) + '</h3><span class="muted small">' + gr.items.length + '</span></div>' +
+          genResultRows(gr.items, false) + '</div>';
+      }).join('') + (r.total ? '' : '<div class="card"><p>Every generator has a service record this year.</p></div>');
+  }
+  function genReorder(G, msg) {
+    var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
+    if (!loop) return genPick(G);
+    var keys = genOrdered(loop, d.order[loop.id]).map(function (s) { return s.key; });
+    var label = function (k) {
+      var s = loop.stops.filter(function (x) { return x.key === k; })[0] || {};
+      return s.gid && G.generators[s.gid] ? genName(G, s.gid) : (s.raw || k);
+    };
+    var draw = function () {
+      $('#genOrder').innerHTML = keys.map(function (k, i) {
+        return '<div class="line gen-ord" data-k="' + esc(k) + '"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(label(k)) + '</span></div>' +
+          '<span class="r row"><button type="button" class="btn small gen-up" aria-label="Move up"' + (i ? '' : ' disabled') + '>&#8593;</button>' +
+          '<button type="button" class="btn small gen-dn" aria-label="Move down"' + (i < keys.length - 1 ? '' : ' disabled') + '>&#8595;</button></span></div>';
+      }).join('');
+      $all('.gen-ord').forEach(function (row, i) {
+        $('.gen-up', row).onclick = function () { if (i) { keys.splice(i - 1, 0, keys.splice(i, 1)[0]); draw(); } };
+        $('.gen-dn', row).onclick = function () { if (i < keys.length - 1) { keys.splice(i + 1, 0, keys.splice(i, 1)[0]); draw(); } };
+      });
+    };
+    app.innerHTML = backLink('#tool/generators', 'Today\'s loop') + '<h1>Reorder ' + esc(loop.name) + '</h1>' +
+      (msg ? '<div class="note gen-badnote" id="genOrderMsg">' + esc(msg) + '</div>' : '') +
+      '<div class="card" id="genOrder"></div>' +
+      '<button class="btn primary block" id="genJustToday">Just today (this phone)</button>' +
+      '<button class="btn block" id="genMakeUsual" style="margin-top:8px">Make this the usual order</button>' +
+      (d.order[loop.id] ? '<button class="btn block danger" id="genBackUsual" style="margin-top:8px">Back to the usual order</button>' : '') +
+      '<p class="muted small">"Just today" changes only this phone, for today. "Make this the usual order" changes the loop for everyone; ' +
+      'if someone changed it since your phone got it, you get the new order to redo yours.</p>';
+    draw();
+    $('#genJustToday').onclick = function () {
+      var dd = genDay(); dd.order[loop.id] = keys.slice(); genDaySave(dd); toast('Order saved for today on this phone.'); go('#tool/generators');
+    };
+    if ($('#genBackUsual')) $('#genBackUsual').onclick = function () { var dd = genDay(); delete dd.order[loop.id]; genDaySave(dd); go('#tool/generators'); };
+    $('#genMakeUsual').onclick = function () {
+      var btn = $('#genMakeUsual'); btn.disabled = true;
+      call('apiGenSetUsualOrder', loop.id, loop.sig, keys.slice()).then(function (r) {
+        var dd = genDay(); delete dd.order[loop.id]; genDaySave(dd);
+        toast(r.queued ? r.message : 'Usual order saved.', 5000);
+        go('#tool/generators');
+      }).catch(function (err) {
+        var m = errMsg(err);
+        if (!/^CHANGED:/.test(String(err && err.message || err).replace(/^Error:\s*/, '')) && !/changed this loop/i.test(m)) { btn.disabled = false; fail(err); return; }
+        genLoad(true).then(function (G2) { var dd = genDay(); delete dd.order[loop.id]; genDaySave(dd); genReorder(G2, m); }).catch(function () { btn.disabled = false; toast(m, 7000); });
+      });
+    };
+  }
+  function genLoops(G) {
+    app.innerHTML = genHead(G, 'loops') + '<div class="card"><h3>Loops</h3>' + G.loops.map(function (l) {
+      return '<a class="line" href="#tool/generators/loop/' + genEnc(l.id) + '"><span class="l"><span class="t">' + esc(l.name) + '</span>' +
+        '<span class="s">' + esc((l.area ? l.area + ' \u00b7 ' : '') + l.stops.length + ' stops' + (l.active ? '' : ' \u00b7 turned off')) + '</span></span><span class="tap" aria-hidden="true">&#8250;</span></a>';
+    }).join('') + '</div>' +
+      '<form class="card" id="genNewLoop"><h3>New loop (needs signal)</h3><label class="field" for="genNlName">Name</label><input type="text" id="genNlName">' +
+      '<label class="field" for="genNlArea">Area</label><input type="text" id="genNlArea"><button class="btn block" type="submit" style="margin-top:12px">Add loop</button></form>' + genFoot();
+    genWire();
+    $('#genNewLoop').onsubmit = function (ev) {
+      ev.preventDefault();
+      call('apiGenSaveLoop', { name: $('#genNlName').value, area: $('#genNlArea').value }).then(function (r) {
+        S.gen = r.snapshot; toast('Loop added.'); go('#tool/generators/loop/' + genEnc(r.id));
+      }).catch(fail);
+    };
+  }
+  function genLoopEdit(G, id) {
+    var l = genLoopById(G, id);
+    if (!l) return genLoops(G);
+    app.innerHTML = backLink('#tool/generators/loops', 'Loops') + '<h1>' + esc(l.name) + '</h1>' +
+      '<form class="card" id="genLoopForm"><label class="field" for="genLName">Name</label><input type="text" id="genLName" value="' + esc(l.name) + '">' +
+      '<label class="field" for="genLArea">Area</label><input type="text" id="genLArea" value="' + esc(l.area) + '">' +
+      '<label class="field" for="genLNotes">Notes</label><textarea id="genLNotes">' + esc(l.notes) + '</textarea>' +
+      '<label class="toggle"><input type="checkbox" id="genLActive"' + (l.active ? ' checked' : '') + '> Loop is on (shows in the loop list)</label>' +
+      '<button class="btn block" type="submit" style="margin-top:12px">Save loop (needs signal)</button></form>' +
+      '<div class="card"><h3>Stops</h3>' + (l.stops.map(function (s, i) {
+        return '<div class="line"><div class="l"><span class="t">' + (i + 1) + '. ' + esc(s.gid && G.generators[s.gid] ? genName(G, s.gid) : s.raw || s.key) + '</span>' +
+          '<span class="s">' + esc(s.gid || 'not linked') + '</span></div><span class="r"><button type="button" class="btn small gen-rm" data-k="' + esc(s.key) + '">Remove</button></span></div>';
+      }).join('') || '<p class="muted">No stops yet.</p>') +
+      '<label class="field" for="genAddQ">Add a stop: search</label><input type="text" id="genAddQ" autocomplete="off"><div id="genAddRes"></div></div>';
+    $('#genLoopForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      call('apiGenSaveLoop', { id: l.id, name: $('#genLName').value, area: $('#genLArea').value, notes: $('#genLNotes').value, active: $('#genLActive').checked })
+        .then(function (r) { S.gen = r.snapshot; toast('Loop saved.'); genLoopEdit(r.snapshot, l.id); }).catch(fail);
+    };
+    $all('.gen-rm').forEach(function (b) {
+      b.onclick = function () {
+        if (!window.confirm('Remove this stop from ' + l.name + '? The generator record stays.')) return;
+        call('apiGenRemoveStop', l.id, b.getAttribute('data-k'), l.sig).then(function (r) { S.gen = r.snapshot; toast('Stop removed.'); genLoopEdit(r.snapshot, l.id); }).catch(fail);
+      };
+    });
+    $('#genAddQ').oninput = function () {
+      var r = genSearch(G, $('#genAddQ').value).slice(0, 12);
+      $('#genAddRes').innerHTML = r.map(function (x) {
+        return '<div class="line"><div class="l"><span class="t">' + esc(x.name) + '</span><span class="s">' + esc(x.address + ' \u00b7 ' + x.gid) + '</span></div>' +
+          '<span class="r"><button type="button" class="btn small gen-addstop" data-g="' + esc(x.gid) + '">Add</button></span></div>';
+      }).join('');
+      $all('.gen-addstop').forEach(function (b) {
+        b.onclick = function () {
+          call('apiGenAddStop', l.id, b.getAttribute('data-g'), l.sig).then(function (r) { S.gen = r.snapshot; toast('Stop added.'); genLoopEdit(r.snapshot, l.id); }).catch(fail);
+        };
+      });
+    };
+  }
+  function genAddPage(G) {
+    var fl = (G.fields || []).concat(G.extra || []);
+    app.innerHTML = backLink('#tool/generators/search', 'Search') + '<h1>Add a generator</h1>' +
+      '<form class="card" id="genAddForm"><h3>Customer</h3><label class="field" for="genAcQ">Existing customer: search</label>' +
+      '<input type="text" id="genAcQ" autocomplete="off"><div id="genAcRes"></div><input type="hidden" id="genAcId">' +
+      '<p class="muted small" id="genAcPicked">Or a new customer:</p>' +
+      '<div id="genNewCust"><label class="field" for="genNcName">Name</label><input type="text" id="genNcName">' +
+      '<label class="field" for="genNcStreet">Street</label><input type="text" id="genNcStreet">' +
+      '<label class="field" for="genNcTown">Town</label><input type="text" id="genNcTown">' +
+      '<label class="field" for="genNcState">State</label><input type="text" id="genNcState" value="ME">' +
+      '<label class="field" for="genNcPhone">Phone</label><input type="tel" id="genNcPhone"></div>' +
+      '<h3 style="margin-top:16px">Generator</h3>' + fl.map(function (f) {
+        return '<label class="field" for="genAg_' + esc(f.key) + '">' + esc(f.label) + '</label><input type="text" id="genAg_' + esc(f.key) + '" data-f="' + esc(f.key) + '" autocomplete="off">';
+      }).join('') +
+      '<p class="muted small">No door, gate or alarm codes, WiFi passwords or key spots.</p>' +
+      '<button class="btn primary block" type="submit" id="genAddSave">Add generator (needs signal)</button></form>';
+    $('#genAcQ').oninput = function () {
+      var seen = {}, r = genSearch(G, $('#genAcQ').value).filter(function (x) { var c = G.generators[x.gid].cid; if (seen[c]) return false; seen[c] = 1; return true; }).slice(0, 8);
+      $('#genAcRes').innerHTML = r.map(function (x) {
+        return '<button type="button" class="line gen-acpick" data-c="' + esc(G.generators[x.gid].cid) + '"><span class="l"><span class="t">' + esc(x.name) + '</span><span class="s">' + esc(x.address) + '</span></span></button>';
+      }).join('');
+      $all('.gen-acpick').forEach(function (b) {
+        b.onclick = function () {
+          var cid = b.getAttribute('data-c'); $('#genAcId').value = cid;
+          $('#genAcPicked').textContent = 'Customer: ' + ((G.customers[cid] || {}).name || cid) + ' (' + cid + ')';
+          $('#genNewCust').classList.add('hidden'); $('#genAcRes').innerHTML = '';
+        };
+      });
+    };
+    $('#genAddForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var gen = {};
+      $all('#genAddForm input[data-f]').forEach(function (i) { if (i.value.trim()) gen[i.getAttribute('data-f')] = i.value.trim(); });
+      var p = { gen: gen };
+      if ($('#genAcId').value) p.customerId = $('#genAcId').value;
+      else p.newCustomer = { name: $('#genNcName').value, street: $('#genNcStreet').value, town: $('#genNcTown').value, state: $('#genNcState').value, phone: $('#genNcPhone').value };
+      var texts = Object.keys(gen).map(function (k) { return gen[k]; });
+      if (texts.some(genLooksLikeCode)) { toast('Leave out door, alarm or gate codes, WiFi passwords and key spots.', 6000); return; }
+      var btn = $('#genAddSave'); btn.disabled = true;
+      call('apiGenAddGenerator', p).then(function (r) {
+        S.gen = r.snapshot; toast('Added ' + r.generatorId + (r.newCustomer ? ' and customer ' + r.customerId : '') + '.', 5000);
+        go('#tool/generators/stop/' + genEnc(r.generatorId));
+      }).catch(function (err) { btn.disabled = false; fail(err); });
+    };
+  }
+  /* ---- GPS pin ---- */
+  var GEN_PIN_WARN_M = 50;
+  var GEN_MAP_HOME = [44.16, -70.89]; // Lovell / Fryeburg area: the map's start when there is no pin and no address match
+  var GEN_LEAFLET = { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', jsSri: 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=',
+                      css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', cssSri: 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' };
+  /** "Use my location" only in the phone app: the GitHub Pages page itself (https, top level). Never reads the location. */
+  function genCanGps() {
+    return !!(window.WES_ENGINE && window.isSecureContext !== false && 'geolocation' in navigator && window.top === window);
+  }
+  function genPinUrl(pin) { return 'https://www.google.com/maps/dir/?api=1&destination=' + pin.lat + ',' + pin.lng; }
+  function genPinLabel(p) {
+    return (p.source === 'map' ? 'Map pin' : 'GPS pin' + (p.acc != null && p.acc !== '' ? ' \u00b1' + Math.round(p.acc) + ' m' : '')) +
+      (p.pending ? ' \u00b7 waiting to upload' : (p.by ? ' \u00b7 ' + p.by : '') + (p.date ? ' \u00b7 ' + p.date : ''));
+  }
+  /** The pin part of a stop: the pin on file (Move pin), or the nudge (Use my location / Drop pin on map / Not now). */
+  function genPinCard(G, gid, open, msgHtml) {
+    var box = $('#genPinCard'), g = G.generators[gid];
+    if (!box || !g) return;
+    S.genPinSkip = S.genPinSkip || {};
+    var skip = S.genPinSkip[gid] === genToday() && !open;
+    var btns = '<div class="row gen-pinbtns">' + (genCanGps() ? '<button type="button" class="btn primary" id="genUseLoc">Use my location</button>' : '') +
+      '<button type="button" class="btn" id="genMapPin">Drop pin on map</button>' +
+      '<button type="button" class="btn" id="genPinLater">Not now</button></div>';
+    if (g.pin && !open) {
+      box.innerHTML = '<div class="spread"><div><b>Generator pin</b><div class="muted small" id="genPinInfo">' + esc(genPinLabel(g.pin)) + '</div></div>' +
+        '<button type="button" class="btn small" id="genMovePin">Move pin</button></div>';
+      $('#genMovePin').onclick = function () { genPinCard(G, gid, true); };
+      return;
+    }
+    if (skip) {
+      box.innerHTML = '<button type="button" class="linklike" id="genAddPin">Add a pin for this generator</button>';
+      $('#genAddPin').onclick = function () { S.genPinSkip[gid] = ''; genPinCard(G, gid, true); };
+      return;
+    }
+    box.innerHTML = '<b>' + (g.pin ? 'Move the pin' : 'Pin where the generator sits') + '</b>' +
+      '<p class="muted small">So Navigate goes straight to the unit, not just the house. Stand next to the generator and tap Use my location' +
+      (genCanGps() ? '' : ' (in the phone app)') + ', or drop the pin on the map.</p>' +
+      '<div id="genPinMsg">' + (msgHtml || '') + '</div>' + btns;
+    var later = function () { S.genPinSkip[gid] = genToday(); genPinCard(G, gid, false); };
+    $('#genPinLater').onclick = later;
+    $('#genMapPin').onclick = function () { go('#tool/generators/pin/' + genEnc(gid)); };
+    if ($('#genUseLoc')) $('#genUseLoc').onclick = function () { genGpsFix(G, gid); };
+  }
+  function genPinMsg(html) { var m = $('#genPinMsg'); if (m) m.innerHTML = html; }
+  /** One location reading, on the tech's tap only. Nothing is kept unless it becomes the generator's pin. */
+  function genGpsFix(G, gid) {
+    var b = $('#genUseLoc'); if (b) b.disabled = true;
+    genPinMsg('<p class="note small" id="genPinWait">Finding your location\u2026 stand next to the generator.</p>');
+    var answered = false;
+    var onErr = function (e) {
+      if (answered) return; answered = true;
+      var denied = e && e.code === 1;
+      genPinCard(G, gid, true, '<p class="note gen-badnote small" id="genPinErr">' + (denied
+        ? 'Location is off for this app. Drop the pin on the map instead, or tap Not now. (To allow it: iPhone Settings &gt; Privacy &gt; Location Services &gt; Safari Websites; Android: Chrome &gt; Site settings &gt; Location.)'
+        : 'No GPS fix here (indoors, or a weak signal). Step outside next to the unit and try again, drop the pin on the map, or tap Not now.') + '</p>');
+      if (denied && $('#genUseLoc')) $('#genUseLoc').classList.add('hidden');
+    };
+    try {
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        if (answered) return; answered = true;
+        var c = pos && pos.coords || {}, acc = Number(c.accuracy);
+        var fix = { generatorId: gid, lat: Number(c.latitude), lng: Number(c.longitude), source: 'gps', acc: isFinite(acc) ? Math.round(acc * 10) / 10 : 9999,
+                    at: new Date(pos.timestamp || Date.now()).toISOString() };
+        if (!(fix.acc > GEN_PIN_WARN_M)) { genSavePin(G, fix); return; }
+        genPinCard(G, gid, true, '<p class="note small" id="genPinWarn">This reading is only accurate to \u00b1' + Math.round(fix.acc) + ' m (it should be under ' +
+          GEN_PIN_WARN_M + ' m). Try again in the open next to the unit, or drop the pin on the map.</p>' +
+          '<button type="button" class="btn small" id="genPinAnyway">Use it anyway (\u00b1' + Math.round(fix.acc) + ' m)</button>');
+        $('#genPinAnyway').onclick = function () { genSavePin(G, fix); };
+        if ($('#genUseLoc')) $('#genUseLoc').textContent = 'Try again';
+      }, onErr, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    } catch (e) { onErr({ code: 2 }); }
+  }
+  function genSavePin(G, p) {
+    genPinMsg('<p class="note small">Saving the pin\u2026</p>');
+    call('apiGenSetPin', p).then(function (r) {
+      if (r.snapshot) S.gen = r.snapshot;
+      toast(r.queued ? r.message : r.applied === false ? 'A newer pin was already on file; it was kept.' :
+        'Pin saved' + (p.source === 'gps' ? ' (\u00b1' + Math.round(p.acc) + ' m)' : '') + '. Navigate now goes to the generator.', 5000);
+      var back = '#tool/generators/stop/' + genEnc(p.generatorId);
+      if (location.hash === back) renderGen('stop', p.generatorId); else go(back);
+    }).catch(function (err) { genPinMsg('<p class="note gen-badnote small">' + esc(errMsg(err)) + '</p>'); fail(err); });
+  }
+  /** Leaflet (and its CSS), loaded only when a map is opened. Needs signal. */
+  function genLeaflet() {
+    if (window.L && window.L.map) return Promise.resolve(window.L);
+    if (genLeaflet.p) return genLeaflet.p;
+    genLeaflet.p = new Promise(function (resolve, reject) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = GEN_LEAFLET.css; css.integrity = GEN_LEAFLET.cssSri; css.crossOrigin = '';
+      document.head.appendChild(css);
+      var js = document.createElement('script');
+      js.src = GEN_LEAFLET.js; js.integrity = GEN_LEAFLET.jsSri; js.crossOrigin = '';
+      js.onload = function () { if (window.L && window.L.map) resolve(window.L); else reject(new Error('The map did not load.')); };
+      js.onerror = function () { genLeaflet.p = null; reject(new Error('OFFLINE: The map needs signal.')); };
+      setTimeout(function () { if (!(window.L && window.L.map)) { genLeaflet.p = null; reject(new Error('OFFLINE: The map needs signal.')); } }, 15000);
+      document.head.appendChild(js);
+    });
+    return genLeaflet.p;
+  }
+  function genTiles(L, map) {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+  }
+  /** Where the map starts: the pin, else the address on file (OpenStreetMap search), else the Lovell / Fryeburg area. */
+  function genMapStart(g, c) {
+    if (g.pin) return Promise.resolve({ at: [g.pin.lat, g.pin.lng], zoom: 19 });
+    var q = g.siteAddress || (c && c.address) || '';
+    if (!q || !window.fetch) return Promise.resolve({ at: GEN_MAP_HOME, zoom: 11 });
+    return fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q))
+      .then(function (r) { return r.json(); }).then(function (j) {
+        return j && j[0] ? { at: [Number(j[0].lat), Number(j[0].lon)], zoom: 18 } : { at: GEN_MAP_HOME, zoom: 11 };
+      }).catch(function () { return { at: GEN_MAP_HOME, zoom: 11 }; });
+  }
+  /** Drop pin on map: move the map until the cross is on the generator, then Pin here. */
+  function genPinMap(G, gid) {
+    var g = G.generators[gid], c = g && G.customers[g.cid];
+    if (!g) return genStop(G, gid);
+    var back = '#tool/generators/stop/' + genEnc(gid);
+    app.innerHTML = backLink(back, c ? c.name : gid) + '<h1>Drop the pin</h1>' +
+      '<p class="sub">Move the map until the cross is on the generator, then tap Pin here.</p>' +
+      '<div class="gen-mapwrap"><div id="genMap" class="gen-map"><div class="loading">Loading the map\u2026</div></div><div class="gen-cross" aria-hidden="true"></div></div>' +
+      '<div class="actions"><a class="btn" href="' + esc(back) + '">Cancel</a><button type="button" class="btn primary" id="genPinHere" disabled>Pin here</button></div>';
+    var online = !(G.local && G.local.phone && !G.local.online) && navigator.onLine !== false;
+    if (!online) { genMapFail(back); return; }
+    Promise.all([genLeaflet(), genMapStart(g, c)]).then(function (r) {
+      var L = r[0], st = r[1], el = $('#genMap');
+      if (!el) return;
+      el.innerHTML = '';
+      var map = L.map(el, { zoomControl: true }).setView(st.at, st.zoom);
+      genTiles(L, map);
+      var btn = $('#genPinHere');
+      btn.disabled = false;
+      btn.onclick = function () {
+        var ctr = map.getCenter();
+        btn.disabled = true;
+        genSavePin(G, { generatorId: gid, lat: Math.round(ctr.lat * 1e6) / 1e6, lng: Math.round(ctr.lng * 1e6) / 1e6, source: 'map', at: new Date().toISOString() });
+      };
+    }).catch(function () { genMapFail(back); });
+  }
+  function genMapFail(back) {
+    var el = $('#genMap');
+    if (el) el.innerHTML = '<p class="note" id="genMapOff">The map needs signal. Use my location at the unit instead (it works with no signal), or try the map later.</p>';
+    var b = $('#genPinHere'); if (b) b.classList.add('hidden');
+  }
+  /** Today's loop on a map: pinned stops only (needs signal). */
+  function genLoopMap(G) {
+    var d = genDay(), loop = d.loopId ? genLoopById(G, d.loopId) : null;
+    if (!loop) return genPick(G);
+    var stops = genOrdered(loop, d.order[loop.id]), pinned = [];
+    stops.forEach(function (s, i) { var g = s.gid && G.generators[s.gid]; if (g && g.pin) pinned.push({ n: i + 1, gid: s.gid, g: g }); });
+    var linked = stops.filter(function (s) { return s.gid && G.generators[s.gid]; }).length;
+    app.innerHTML = backLink('#tool/generators', 'Today\'s loop') + '<h1>' + esc(loop.name) + ' map</h1>' +
+      '<p class="sub" id="genMapCount">' + pinned.length + ' of ' + linked + ' stops pinned' + (pinned.length < linked ? ' (stops get a pin on the next visit)' : '') + '</p>' +
+      (pinned.length ? '<div class="gen-mapwrap"><div id="genMap" class="gen-map"><div class="loading">Loading the map\u2026</div></div></div>' : '<div class="card"><p>No pinned stops on this loop yet.</p></div>');
+    if (!pinned.length) return;
+    var online = !(G.local && G.local.phone && !G.local.online) && navigator.onLine !== false;
+    if (!online) { genMapFail(''); return; }
+    genLeaflet().then(function (L) {
+      var el = $('#genMap');
+      if (!el) return;
+      el.innerHTML = '';
+      var map = L.map(el), pts = [];
+      genTiles(L, map);
+      pinned.forEach(function (p) {
+        var ll = [p.g.pin.lat, p.g.pin.lng]; pts.push(ll);
+        L.marker(ll, { title: p.n + '. ' + genName(G, p.gid) }).addTo(map).bindPopup('<b>' + p.n + '. ' + esc(genName(G, p.gid)) + '</b><br>' +
+          '<a href="#tool/generators/stop/' + genEnc(p.gid) + '">Open</a> \u00b7 <a target="_blank" rel="noopener" href="' + esc(genPinUrl(p.g.pin)) + '">Navigate</a>');
+      });
+      if (pts.length === 1) map.setView(pts[0], 16); else map.fitBounds(pts, { padding: [30, 30] });
+    }).catch(function () { genMapFail(''); });
+  }
+  /** Home: the loop I picked for today (only when the tool is on and a loop is picked on this phone). */
+  function genHomeCard() {
+    if (!genOn() || !genDay().loopId) return;
+    genLoad(false).then(function (G) {
+      var d = genDay(), loop = genLoopById(G, d.loopId), jobs = $('#jobs');
+      if (!loop || !jobs || $('#genHome')) return;
+      var today = genToday(), linked = 0, done = 0, next = null;
+      genOrdered(loop, d.order[loop.id]).forEach(function (s) {
+        if (!s.gid || !G.generators[s.gid]) return;
+        linked++;
+        var st = genStatus(G, s.gid, today);
+        if (st.done || st.wait) done++; else if (!next) next = s.gid;
+      });
+      var card = document.createElement('div');
+      card.innerHTML = '<a class="card tapcard gen-home" id="genHome" href="#tool/generators"><div class="card-head"><h3>Generator loop: ' + esc(loop.name) + '</h3>' +
+        '<span class="tap" aria-hidden="true">&#8250;</span></div><div class="line"><div class="l"><span class="t" id="genHomeProgress">' + done + ' of ' + linked + ' done</span>' +
+        '<span class="s">' + esc(next ? 'Next: ' + genName(G, next) : 'All stops done') + '</span></div></div></a>';
+      var jc = jobs.closest ? jobs.closest('.card') : null;
+      if (jc && jc.parentNode) jc.parentNode.insertBefore(card.firstChild, jc);
+    }).catch(function () {});
   }
 
   /* ================= Materials picker (v1.2) =================
