@@ -18,6 +18,11 @@
  *    "Not serviced this year") works with no signal; a service is an outbox op (genService, client ID = SubmissionID) shown
  *    as "Waiting to upload" until the server has it; "Make this the usual order" is an outbox op too (genLoopOrder), and so
  *    is a generator's pin (genSetPin; the location is read only when the tech taps "Use my location", in the page).
+ *  - v1.6 vehicle tracker (VEHICLES_MODE owner / on): Log service and Update miles are outbox ops (vehService,
+ *    vehMiles; client ID = SubmissionID); the vehicle list is the last copy seen with signal. History, receipts, photos,
+ *    vehicle and schedule edits, retire / restore / delete need signal.
+ *  - v1.6 customer list (CUSTOMERS_MODE mods / on): ONLINE ONLY. Customer contact info is never kept on the phone: the
+ *    replies go straight to the page, nothing is remembered in the store, and with no signal the screen says so.
  *  - Everything else (photos, work orders, moderator screens...): needs signal, with a clear message.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
@@ -49,6 +54,7 @@
   var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent'];
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
+  var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
   var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -209,6 +215,7 @@
   }
 
   function isGenOp(op) { return /^gen/.test(String(op && op.type || '')); }
+  function isVehOp(op) { return /^veh/.test(String(op && op.type || '')); } // v1.6 vehicle tracker (not time)
 
   function applyOp(list, op, me, offDayHours) {
     var p = op.entry || {}, at = stamp(new Date(op.createdAt || 0)), e;
@@ -236,7 +243,7 @@
     var t = this.timeData();
     if (!t) return [];
     var list = clone(t.entries || []), me = t.email, off = t.offDayHours;
-    this.myOps().forEach(function (op) { if (!isGenOp(op)) applyOp(list, op, me, off); }); // v1.4: generator ops are not time
+    this.myOps().forEach(function (op) { if (!isGenOp(op) && !isVehOp(op)) applyOp(list, op, me, off); }); // v1.4: generator ops are not time
     if (t.allotment) TC.markOverAllotment(list, t.allotment, t.year);
     return list;
   };
@@ -433,7 +440,7 @@
     var ops = self.myOps().slice(0, BATCH);
     if (!ops.length && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
     if (round > 20) return Promise.resolve();
-    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, phoneTime: o.phoneTime }; });
+    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, veh: o.veh, phoneTime: o.phoneTime }; });
     return self.rcall('apiSync', [{ appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true }], 30000)
       .then(function (res) {
         var byCid = {}, gone = {}, stop = false, writes = [];
@@ -446,8 +453,9 @@
             gone[r.cid] = true;
             writes.push(self.store.del('outbox', r.cid));
             if (isGenOp(o)) writes.push(self.genAfter(o, r)); // v1.4: the generator copy is out of date now
+            if (isVehOp(o) && self.reads().veh) self.reads().veh.at = 0; // v1.6: the vehicles copy is out of date now
             if (r.status === 'rejected') {
-              var pr = { cid: r.cid, type: o.type, entry: o.entry, gen: o.gen, message: r.message || 'Not saved.', at: self.nowMs() };
+              var pr = { cid: r.cid, type: o.type, entry: o.entry, gen: o.gen, veh: o.veh, message: r.message || 'Not saved.', at: self.nowMs() };
               self.problems.push(pr);
               writes.push(self.store.put('problems', pr));
             }
@@ -619,6 +627,16 @@
       return r;
     }, function (e) {
       if (NETWORKISH.test(e.code || '') && e.code === 'OFFLINE') throw err(NEEDS_SIGNAL, 'OFFLINE');
+      throw e;
+    });
+  };
+
+  /** v1.6 customers: straight to the server or "needs signal"; the reply is NOT stored (no remember, no outbox). */
+  Engine.prototype.custCall = function (fn, args) {
+    var self = this;
+    if (!self.likelyOnline()) return Promise.reject(err(CUST_NEEDS_SIGNAL, 'OFFLINE'));
+    return self.rcall(fn, args).catch(function (e) {
+      if (NETWORKISH.test(e.code || '') && e.code === 'OFFLINE') throw err(CUST_NEEDS_SIGNAL, 'OFFLINE');
       throw e;
     });
   };
@@ -1031,6 +1049,32 @@
     });
   };
 
+  /* ---------------- v1.6 vehicle tracker ---------------- */
+  var VEH_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the office by itself when you have signal.';
+  /**
+   * Log service / Update miles: an outbox op (vehService | vehMiles) with the client ID as the SubmissionID, so a retry
+   * never makes a second row. With signal the server answers right away (a refusal shows on the form).
+   */
+  Engine.prototype.vehQueue = function (type, p) {
+    var self = this;
+    p = clone(p || {});
+    if (!p.vehicleId) return Promise.reject(err('Pick the vehicle first.'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(p.date || ''))) p.date = self.today();
+    var op = { cid: uuid(), type: type, veh: p };
+    p.submissionId = op.cid;
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid); // shown now, on the form
+        throw err(r.message || 'That was not saved.');
+      }
+      if (r && r.status === 'done') {
+        return { ok: true, queued: false, eventId: type === 'vehService' ? r.entryId : '', readingId: type === 'vehMiles' ? r.entryId : '',
+                 vehicleId: p.vehicleId, warning: r.warning || '' };
+      }
+      return { ok: true, queued: true, cid: op.cid, message: VEH_QUEUED_MSG };
+    });
+  };
+
   /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
   Engine.prototype.handle = function (fn, args) {
     var self = this;
@@ -1099,11 +1143,18 @@
         case 'apiGenHistory': case 'apiGenSaveLoop': case 'apiGenAddStop': case 'apiGenRemoveStop': case 'apiGenAddGenerator':
         case 'apiGenSetCustomerActive':
           return self.genPass(fn, args);
+        // v1.6 vehicle tracker: the list from the phone's copy with no signal; service / miles through the outbox
+        case 'apiVehSnapshot': return self.read(fn, args, self.reads().veh || null, function (d) { self.remember('veh', d); },
+          'OFFLINE: No signal. Vehicles show here once this phone has opened them with signal.');
+        case 'apiVehLogService': return self.vehQueue('vehService', args[0]);
+        case 'apiVehAddMiles': return self.vehQueue('vehMiles', args[0]);
+        // v1.6 customer list: online only, never remembered on the phone, never marks anything stale
+        case 'apiCustSearch': case 'apiCustDetail': return self.custCall(fn, args);
         default: return self.passthrough(fn, args);
       }
     });
   };
 
-  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, GEN_QUEUED_MSG: GEN_QUEUED_MSG, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
+  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, GEN_QUEUED_MSG: GEN_QUEUED_MSG, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, CUST_NEEDS_SIGNAL: CUST_NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
            slipBackoff: slipBackoff, slipFailKind: slipFailKind, SLIP_BACKOFF_MS: SLIP_BACKOFF_MS, SLIP_QUEUED_MSG: SLIP_QUEUED_MSG };
 });
