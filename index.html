@@ -1116,6 +1116,8 @@
     matSyncTool(); // v1.2 mat-hook
     slipQSyncTool(); // v1.3 slipq-hook
     genSyncTool(); // v1.4 gen-hook
+    vehSyncTool(); // v1.6 veh-hook
+    custSyncTool(); // v1.6 cust-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
       '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
@@ -1125,6 +1127,8 @@
     matSyncTool(); // v1.2 mat-hook
     slipQSyncTool(); // v1.3 slipq-hook
     genSyncTool(); // v1.4 gen-hook
+    vehSyncTool(); // v1.6 veh-hook
+    custSyncTool(); // v1.6 cust-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
     if (t.action.type === 'link') { go('#tools'); return; }
@@ -3854,6 +3858,438 @@
         });
       });
     }).catch(fail);
+  }
+
+  /* ================= Vehicles (v1.6) =================
+   * Tools > Vehicles (VEHICLE-TRACKER-DESIGN.md, Doug's decisions of Nov 9 2026). Shown only when the server says so
+   * (S.boot.vehiclesMode: 'owner' = Doug; 'edit' / 'view' = people Doug lists in VEHICLES_EDITORS / VEHICLES_VIEWERS;
+   *  'log' = everyone else with VEHICLES_MODE on; 'off'). Reminders, costs, history and details: owner / edit / view only.
+   * Its one-line hooks end in "// v1.6 veh-hook" (the Tools page and a tool page). No Home card: Tools only.
+   *  - owner / edit / view: each vehicle with its miles (an estimate is labeled), status (OK / Soon / Overdue / Needs setup) and due
+   *    items, every detail (VIN, plate, insurance, tires, oil, photo...), history (cost, vendor, receipt photo). Edit (owner /
+   *    edit): Add a vehicle, Edit details and schedule, Retire / Restore. Delete for good: Doug only, the name typed to confirm.
+   *  - log (techs): Log service and Update miles only. No due dates, reminders, costs or history (reminders are Doug's).
+   *  - Miles are only ever typed: no GPS, no tracking. Logging a service with miles is also an odometer reading.
+   *  - On the phone app, Log service and Update miles go through the outbox (work with no signal; SubmissionID dedupe).
+   *    Everything else needs signal. A receipt photo needs signal (it is added after the service is saved).
+   * Independent of jobs: nothing here touches slips, the WES calendar, work orders, time or points.
+   */
+  ICONS.vehicle = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16V8a1 1 0 0 1 1-1h11v9"/><path d="M14 10h4l3 3v3h-7"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></svg>';
+  var VEH_TOOL = { id: 'vehicles', title: 'Vehicles', subtitle: 'Service log, miles, registration and inspection reminders', icon: 'vehicle',
+    action: { type: 'page', render: function (a, b) { renderVeh(a, b); } } };
+  var VEH_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  function vehMode() { return (S.boot && S.boot.vehiclesMode) || 'off'; }
+  function vehManage() { return /^(owner|edit|view)$/.test(vehMode()); } // sees reminders, costs, history
+  function vehSyncTool() {
+    var i = TOOLS.indexOf(VEH_TOOL), on = vehMode() !== 'off';
+    VEH_TOOL.subtitle = vehManage() ? 'Service log, miles, registration and inspection reminders' : 'Log a service or the odometer miles';
+    if (on && i < 0) TOOLS.push(VEH_TOOL);
+    if (!on && i >= 0) TOOLS.splice(i, 1);
+  }
+  /** A client-made ID for a service / reading (the phone app replaces it with its outbox ID). */
+  function vehSid() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+  function vehChip(st) {
+    var cls = st === 'Overdue' ? 'chip solid' : st === 'Soon' ? 'chip warn' : 'chip';
+    return '<span class="' + cls + ' vehst" data-st="' + esc(st) + '">' + esc(st) + '</span>';
+  }
+  function vehToday() { return (S.veh && S.veh.today) || (S.boot && S.boot.today) || ''; }
+  function vehFind(id) { return S.veh ? S.veh.vehicles.filter(function (v) { return v.id === id; })[0] : null; }
+  function vehLoad() { return call('apiVehSnapshot').then(function (s) { S.veh = s; return s; }); }
+  function vehMonthSel(id, val, blankText) {
+    return '<select id="' + id + '"><option value="">' + esc(blankText) + '</option>' + VEH_MONTHS.map(function (m, i) {
+      return '<option value="' + (i + 1) + '"' + (Number(val) === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>';
+  }
+  function vehDueLine(d) {
+    return '<div class="line vehdue" data-rule="' + esc(d.ruleId) + '"><div class="l"><span class="t">' + esc(d.type) + '</span>' +
+      '<span class="s">' + (d.label ? 'Due ' + esc(d.label) : esc(d.reason || 'Needs setup')) +
+      (d.milesEstimated ? ' &#183; miles are an estimate' : '') + (d.label && d.reason ? ' &#183; ' + esc(d.reason) : '') + '</span></div>' +
+      '<span class="r">' + vehChip(d.status) + '</span></div>';
+  }
+
+  function renderVeh(a, b) {
+    if (vehMode() === 'off') { go('#tools'); return; }
+    if ((a === 'add' || b === 'edit') && !/^(owner|edit)$/.test(vehMode())) { go('#tool/vehicles'); return; }
+    if ((b === 'log' || b === 'miles') && vehMode() === 'view') { go('#tool/vehicles/' + a); return; }
+    if (a === 'add') return vehEdit(null);
+    if (a && b === 'log') return vehLogForm(a);
+    if (a && b === 'miles') return vehMilesForm(a);
+    if (a && b === 'edit') return vehEdit(a);
+    if (a) return vehDetail(a);
+    return vehList();
+  }
+
+  function vehList() {
+    loading();
+    vehLoad().then(function (s) {
+      var manage = s.manage, act = s.vehicles.filter(function (v) { return v.active; }), old = s.vehicles.filter(function (v) { return !v.active; });
+      function card(v) {
+        var next = manage ? (v.due || []).filter(function (d) { return d.status !== 'OK'; })[0] : null;
+        return '<a class="line vehrow" data-vid="' + esc(v.id) + '" href="#tool/vehicles/' + esc(v.id) + '"><span class="l"><span class="t">' + esc(v.name) + '</span>' +
+          '<span class="s">' + esc(v.milesLabel) + '</span>' +
+          (next ? '<span class="s">' + esc(next.type) + ': ' + esc(next.label ? 'due ' + next.label : next.reason) + '</span>' : '') +
+          (v.needsReading && v.active ? '<span class="s"><b>Odometer reading is over 30 days old.</b></span>' : '') + '</span>' +
+          '<span class="r">' + (manage ? vehChip(v.status) : '') + '</span></a>';
+      }
+      app.innerHTML = backLink('#tools', 'Tools') + '<h1>Vehicles</h1>' +
+        '<p class="sub">' + (manage ? 'Service log and reminders for the fleet. Reminders, costs and history are ' + (s.owner ? 'yours only (you can share them in Settings).' : 'shared with you by Doug.') :
+          'Log a service or the odometer miles for a vehicle.') + '</p>' +
+        (manage ? '<div class="card" id="vehSummary"><div class="spread"><b>' + s.counts.overdue + ' overdue &#183; ' + s.counts.soon + ' soon &#183; ' +
+          s.counts.setup + ' need setup</b>' + (s.canEdit ? '<button type="button" class="btn small" id="vehRecalc">Recheck now</button>' : '') + '</div>' +
+          '<p class="muted small">' + esc(s.calendar.note) + '</p></div>' : '') +
+        '<div class="card" id="vehList">' + (act.length ? act.map(card).join('') : '<div class="empty">No vehicles yet.</div>') + '</div>' +
+        (manage && old.length ? '<h2>Retired</h2><div class="card" id="vehRetired">' + old.map(card).join('') + '</div>' : '') +
+        (s.canEdit ? '<a class="btn block primary" id="vehAdd" href="#tool/vehicles/add">Add a vehicle</a>' : '') +
+        (manage && old.length ? '<p class="muted small">Retired vehicles keep their history: open one to restore it.</p>' : '') +
+        '<p class="muted small" style="margin-top:12px">Miles are only what someone types (no GPS, no tracking). Between readings the app estimates miles and says so.</p>';
+      if ($('#vehRecalc')) $('#vehRecalc').onclick = function () {
+        call('apiVehRecalc').then(function (r) {
+          var c = r.calendarResult || {};
+          toast(c.enabled ? 'Rechecked. Calendar: ' + (c.created || 0) + ' added, ' + (c.updated || 0) + ' moved, ' + (c.deleted || 0) + ' removed.' : 'Rechecked.', 4000);
+          vehList();
+        }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  function vehDetail(id) {
+    loading();
+    vehLoad().then(function (s) {
+      var v = vehFind(id);
+      if (!v) { toast('Vehicle not found.'); go('#tool/vehicles'); return; }
+      var canLog = s.canLog !== false, canEdit = !!s.canEdit;
+      var acts = (!v.active ? '<p class="note" id="vehRetiredNote">Retired. Its history is kept.</p>' : canLog ?
+        '<div class="grid2"><a class="btn primary" id="vehLogBtn" href="#tool/vehicles/' + esc(id) + '/log">Log service</a>' +
+        '<a class="btn" id="vehMilesBtn" href="#tool/vehicles/' + esc(id) + '/miles">Update miles</a></div>' : '');
+      var kv = function (label, x) { return x === '' || x === null || x === undefined ? '' :
+        '<div class="line"><span class="l"><span class="s">' + esc(label) + '</span><span class="t">' + esc(x) + '</span></span></div>'; };
+      var details = s.manage ? kv('Trim', v.trim) + kv('VIN', v.vin) + kv('Plate', v.plate) + kv('Color', v.color) +
+        kv('Insurance', [v.insuranceCompany, v.insurancePolicy].filter(String).join(' \u00b7 ')) + kv('Insurance renews', v.insuranceRenewal) +
+        kv('Tire size', v.tireSize) + kv('Oil', [v.oilType, v.oilCapacity].filter(String).join(' \u00b7 ')) + kv('Purchased', v.purchaseDate) +
+        kv('Notes', v.notes) : '';
+      app.innerHTML = backLink('#tool/vehicles', 'Vehicles') + '<h1>' + esc(v.name) + '</h1>' +
+        '<p class="sub">' + esc([v.year, v.make, v.model].filter(String).join(' ')) + (v.kind ? ' &#183; ' + esc(v.kind) : '') + '</p>' +
+        '<div class="card"><div class="spread"><span><b id="vehMiles">' + esc(v.milesLabel) + '</b></span>' + (s.manage ? vehChip(v.status) : '') + '</div>' +
+        (v.needsReading && v.active ? '<p class="note warn small" id="vehNudge">The last odometer reading is over 30 days old. Tap Update miles.</p>' : '') + acts + '</div>' +
+        (s.manage ? '<div id="vehPhoto"></div>' +
+          '<h2>Due</h2><div class="card" id="vehDue">' + (v.due.length ? v.due.map(vehDueLine).join('') : '<div class="empty">No schedule yet.</div>') + '</div>' +
+          '<p class="muted small">Registration month: ' + esc(v.regMonth ? VEH_MONTHS[v.regMonth - 1] : 'not set') + ' &#183; inspection month: ' +
+          esc(v.inspMonth ? VEH_MONTHS[v.inspMonth - 1] : v.regMonth ? 'same' : 'not set') + '</p>' +
+          (details ? '<h2>Details</h2><div class="card" id="vehDetails">' + details + '</div>' : '') +
+          (canEdit ? '<a class="btn block" id="vehEditBtn" href="#tool/vehicles/' + esc(id) + '/edit">Edit details and schedule</a>' +
+            (v.active ? '<button type="button" class="btn block" id="vehRetire">Remove (retire) this vehicle</button>' :
+              '<button type="button" class="btn block primary" id="vehRestore">Restore this vehicle</button>') : '') +
+          (s.owner ? '<button type="button" class="btn block danger" id="vehDeleteForGood">Delete for good (mistakes only)</button>' : '') +
+          '<h2>History</h2><div id="vehHist"><div class="loading">Loading&#x2026;</div></div>' : '');
+      if (s.manage) vehHistory(id);
+      if (s.manage && v.hasPhoto) call('apiVehPhoto', id).then(function (r) {
+        var el = $('#vehPhoto'); if (el) el.innerHTML = '<img alt="' + esc(v.name) + '" id="vehPhotoImg" style="max-width:100%;border-radius:8px" src="' + r.dataUrl + '">';
+      }).catch(function () {});
+      if ($('#vehRetire')) $('#vehRetire').onclick = function () {
+        if (!window.confirm('Remove ' + v.name + '? It is hidden from the lists and its reminders stop. Its history is kept and you can restore it.')) return;
+        call('apiVehSetActive', id, false).then(function (r) { toast(r.warning || 'Retired. Restore it any time from Retired.', 4000); vehDetail(id); }).catch(fail);
+      };
+      if ($('#vehRestore')) $('#vehRestore').onclick = function () {
+        call('apiVehSetActive', id, true).then(function (r) { toast(r.warning || 'Restored.', 3000); vehDetail(id); }).catch(fail);
+      };
+      if ($('#vehDeleteForGood')) $('#vehDeleteForGood').onclick = function () {
+        var typed = window.prompt('This deletes ' + v.name + ' and ALL its history for good (for a vehicle added by mistake). To retire it instead, use Remove.\n\nType the vehicle name to confirm:');
+        if (typed === null || typed === undefined) return;
+        call('apiVehDeleteVehicle', id, typed).then(function (r) { toast(r.warning || 'Deleted for good.', 4000); go('#tool/vehicles'); }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  function vehHistory(id) {
+    call('apiVehHistory', id).then(function (h) {
+      var el = $('#vehHist');
+      if (!el) return;
+      el.innerHTML = '<div class="card">' + (h.events.length ? h.events.map(function (e) {
+        return '<div class="line vehev" data-eid="' + esc(e.id) + '"><div class="l"><span class="t">' + esc(e.type) + ' &#183; ' + esc(e.dateLabel) + '</span>' +
+          '<span class="s">' + esc([e.miles !== null ? String(e.miles).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' mi' : '', e.cost, e.vendor].filter(String).join(' \u00b7 ')) + '</span>' +
+          (e.notes ? '<span class="s">' + esc(e.notes) + '</span>' : '') + '<span class="s">' + esc(e.by) + '</span></div>' +
+          '<span class="r">' + (e.hasReceipt || (S.veh && S.veh.canEdit) ? '<button type="button" class="btn small vrc">' + (e.hasReceipt ? 'Receipt' : 'Add receipt') + '</button> ' : '') +
+          (S.veh && S.veh.canEdit ? '<button type="button" class="btn small danger vdel">Delete</button>' : '') + '</span></div>';
+      }).join('') : '<div class="empty">No services logged yet.</div>') + '</div>' +
+        (h.events.length ? '<p class="muted small">Total logged: ' + esc(h.totalCost) + '</p>' : '') +
+        '<h3>Odometer readings</h3><div class="card">' + (h.readings.length ? h.readings.map(function (r) {
+          return '<div class="line"><span class="l"><span class="t">' + String(r.miles).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' mi</span><span class="s">' +
+            esc(r.date) + ' &#183; ' + esc(r.source === 'service' ? 'with a service' : 'reading') + ' &#183; ' + esc(r.by) + '</span></span></div>';
+        }).join('') : '<div class="empty">No readings yet.</div>') + '</div>';
+      $all('.vehev', el).forEach(function (row) {
+        var eid = row.getAttribute('data-eid'), ev = h.events.filter(function (x) { return x.id === eid; })[0];
+        if ($('.vdel', row)) $('.vdel', row).onclick = function () {
+          if (!window.confirm('Delete this ' + ev.type.toLowerCase() + ' from the log? Reminders are recalculated.')) return;
+          call('apiVehDeleteEvent', eid).then(function () { toast('Deleted.'); vehDetail(id); }).catch(fail);
+        };
+        if ($('.vrc', row)) $('.vrc', row).onclick = function () {
+          if (ev.hasReceipt) {
+            call('apiVehReceipt', eid).then(function (r) {
+              openModal('<h2>Receipt</h2><img alt="Receipt" style="max-width:100%" src="' + r.dataUrl + '"><button type="button" class="btn block" id="vehRcClose">Close</button>');
+              if ($('#vehRcClose')) $('#vehRcClose').onclick = closeModal;
+            }).catch(fail);
+            return;
+          }
+          var inp = document.createElement('input');
+          inp.type = 'file'; inp.accept = 'image/*';
+          inp.onchange = function () { if (inp.files && inp.files[0]) vehUploadReceipt(eid, inp.files[0]).then(function () { vehDetail(id); }); };
+          inp.click();
+        };
+      });
+    }).catch(function (err) { var el = $('#vehHist'); if (el) el.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>'; });
+  }
+
+  function vehUploadReceipt(eventId, file) {
+    toast('Saving the receipt photo\u2026', 3000);
+    return Promise.all([compressImage(file, 1600, 0.82), compressImage(file, 400, 0.7)]).then(function (out) {
+      return call('apiVehUploadReceipt', { eventId: eventId, image: out[0].dataUrl, thumb: out[1].dataUrl });
+    }).then(function () { toast('Receipt saved.'); }).catch(fail);
+  }
+
+  function vehLogForm(id) {
+    var draw = function () {
+      var v = vehFind(id);
+      if (!v) { go('#tool/vehicles'); return; }
+      app.innerHTML = backLink('#tool/vehicles/' + id, v.name) + '<h1>Log service</h1><p class="sub">' + esc(v.name) + '</p>' +
+        '<form id="vehLog" class="card" autocomplete="off">' +
+        '<label class="field" for="vlType">Type</label><select id="vlType">' + S.veh.types.map(function (t) { return '<option>' + esc(t) + '</option>'; }).join('') + '</select>' +
+        '<div class="grid2"><div><label class="field" for="vlDate">Date</label><input type="date" id="vlDate" value="' + esc(vehToday()) + '" max="' + esc(vehToday()) + '"></div>' +
+        '<div><label class="field" for="vlMiles">Odometer miles</label><input type="text" inputmode="numeric" id="vlMiles" maxlength="9" placeholder="' +
+          esc(v.lastReading !== null && v.lastReading !== undefined ? String(v.lastReading) : 'e.g. 48210') + '"></div></div>' +
+        '<p class="muted small">Needed for an oil change. The miles also count as an odometer reading.</p>' +
+        '<div class="grid2"><div><label class="field" for="vlCost">Cost (optional)</label><input type="text" inputmode="decimal" id="vlCost" maxlength="12" placeholder="89.95"></div>' +
+        '<div><label class="field" for="vlVendor">Shop / vendor (optional)</label><input type="text" id="vlVendor" maxlength="120"></div></div>' +
+        '<label class="field" for="vlNotes">Notes (optional)</label><textarea id="vlNotes" rows="3" maxlength="1000"></textarea>' +
+        '<label class="field" for="vlReceipt">Receipt photo (optional, needs signal)</label><input type="file" id="vlReceipt" accept="image/*">' +
+        '<p class="muted small">Never put door, alarm or gate codes, passwords or where a key is kept here.</p>' +
+        '<button type="submit" class="btn primary big" id="vlSave">Save service</button></form>';
+      $('#vehLog').onsubmit = function (ev) {
+        ev.preventDefault();
+        var btn = $('#vlSave'); btn.disabled = true;
+        var file = $('#vlReceipt').files && $('#vlReceipt').files[0];
+        var p = { vehicleId: id, type: $('#vlType').value, date: $('#vlDate').value, miles: $('#vlMiles').value, cost: $('#vlCost').value,
+                  vendor: $('#vlVendor').value, notes: $('#vlNotes').value, submissionId: vehSid() };
+        call('apiVehLogService', p).then(function (r) {
+          if (r && r.queued) { toast((r.message || 'Saved on this phone.') + (file ? ' Add the receipt photo from the history once you have signal.' : ''), 6000); go('#tool/vehicles/' + id); return; }
+          toast(r && r.warning ? r.warning : 'Service saved.', r && r.warning ? 6000 : 2500);
+          if (file && r && r.eventId) return vehUploadReceipt(r.eventId, file).then(function () { go('#tool/vehicles/' + id); });
+          go('#tool/vehicles/' + id);
+        }).catch(function (err) { btn.disabled = false; fail(err); });
+      };
+    };
+    if (S.veh && vehFind(id)) draw(); else { loading(); vehLoad().then(draw).catch(fail); }
+  }
+
+  function vehMilesForm(id) {
+    var draw = function () {
+      var v = vehFind(id);
+      if (!v) { go('#tool/vehicles'); return; }
+      app.innerHTML = backLink('#tool/vehicles/' + id, v.name) + '<h1>Update miles</h1><p class="sub">' + esc(v.name) + ' &#183; ' + esc(v.milesLabel) + '</p>' +
+        '<form id="vehMilesF" class="card" autocomplete="off">' +
+        '<label class="field" for="vmMiles">Odometer miles (what the dash shows)</label><input type="text" inputmode="numeric" id="vmMiles" maxlength="9">' +
+        '<label class="field" for="vmDate">Date</label><input type="date" id="vmDate" value="' + esc(vehToday()) + '" max="' + esc(vehToday()) + '">' +
+        '<p class="muted small">Typed by you only: the app never uses GPS or tracks vehicles.</p>' +
+        '<button type="submit" class="btn primary big" id="vmSave">Save reading</button></form>';
+      $('#vehMilesF').onsubmit = function (ev) {
+        ev.preventDefault();
+        var btn = $('#vmSave'); btn.disabled = true;
+        call('apiVehAddMiles', { vehicleId: id, miles: $('#vmMiles').value, date: $('#vmDate').value, submissionId: vehSid() }).then(function (r) {
+          toast(r && r.queued ? (r.message || 'Saved on this phone.') : r && r.warning ? r.warning : 'Reading saved.', 4000);
+          go('#tool/vehicles/' + id);
+        }).catch(function (err) { btn.disabled = false; fail(err); });
+      };
+    };
+    if (S.veh && vehFind(id)) draw(); else { loading(); vehLoad().then(draw).catch(fail); }
+  }
+
+  function vehEdit(id) {
+    loading();
+    vehLoad().then(function (s) {
+      if (!s.canEdit) { go('#tool/vehicles'); return; }
+      var v = id ? vehFind(id) : null;
+      if (id && !v) { go('#tool/vehicles'); return; }
+      v = v || { name: '', year: '', make: '', model: '', trim: '', kind: '', vin: '', plate: '', color: '', regMonth: '', inspMonth: '',
+                 insuranceCompany: '', insurancePolicy: '', insuranceRenewal: '', insuranceReminder: false, tireSize: '', oilType: '',
+                 oilCapacity: '', purchaseDate: '', notes: '', active: true, rules: [] };
+      function val(x) { return esc(x == null ? '' : x); }
+      function txt(fid, label, x, max, extra) {
+        return '<div><label class="field" for="' + fid + '">' + label + '</label><input type="text" id="' + fid + '" maxlength="' + max + '" value="' + val(x) + '"' + (extra || '') + '></div>';
+      }
+      function ruleForm(r) {
+        var month = r.basis !== 'interval';
+        var how = r.basis === 'insurance' ? 'Due on the insurance renewal date (set it above).' :
+          'Due at the end of the ' + (r.basis === 'inspmonth' ? 'inspection' : 'registration') + ' month each year.';
+        return '<form class="card vehrule" data-rid="' + esc(r.id) + '"><div class="spread"><b>' + esc(r.type) + '</b>' +
+          '<label class="techbox"><input type="checkbox" class="rAct"' + (r.active ? ' checked' : '') + '><span>On</span></label></div>' +
+          (month ? '<p class="muted small">' + how + '</p>' :
+            '<div class="grid2"><div><label class="field">Every (miles)</label><input type="text" inputmode="numeric" class="rMi" value="' + val(r.everyMiles) + '" placeholder="not set"></div>' +
+            '<div><label class="field">Every (months)</label><input type="text" inputmode="numeric" class="rMo" value="' + val(r.everyMonths) + '" placeholder="not set"></div></div>' +
+            (r.everyMiles === '' && r.everyMonths === '' ? '<p class="muted small">Blank = "Needs setup". Use your owner\'s manual or your shop\'s interval.</p>' : '')) +
+          '<div class="grid2"><div><label class="field">Soon within (days)</label><input type="text" inputmode="numeric" class="rSd" value="' + val(r.soonDays) + '" placeholder="30"></div>' +
+          (month ? '<div></div>' : '<div><label class="field">Soon within (miles)</label><input type="text" inputmode="numeric" class="rSm" value="' + val(r.soonMiles) + '" placeholder="500"></div>') + '</div>' +
+          '<button type="submit" class="btn small">Save</button></form>';
+      }
+      app.innerHTML = backLink(id ? '#tool/vehicles/' + id : '#tool/vehicles', id ? v.name : 'Vehicles') + '<h1>' + (id ? 'Edit vehicle' : 'Add a vehicle') + '</h1>' +
+        '<form id="vehForm" class="card" autocomplete="off">' +
+        '<label class="field" for="veName">Nickname</label><input type="text" id="veName" maxlength="80" value="' + val(v.name) + '" placeholder="e.g. White Transit">' +
+        '<div class="grid2">' + txt('veYear', 'Year', v.year, 4, ' inputmode="numeric"') + txt('veMake', 'Make', v.make, 40) + '</div>' +
+        '<div class="grid2">' + txt('veModel', 'Model', v.model, 40) + txt('veTrim', 'Trim', v.trim, 40) + '</div>' +
+        '<div class="grid2">' + txt('veKind', 'Kind (van, car...)', v.kind, 60) + txt('veColor', 'Color', v.color, 30) + '</div>' +
+        txt('veVin', 'VIN', v.vin, 20, ' autocapitalize="characters"') +
+        '<div class="grid2">' + txt('vePlate', 'Plate', v.plate, 10, ' autocapitalize="characters"') +
+        '<div><label class="field" for="vePurchase">Purchase date</label><input type="date" id="vePurchase" value="' + val(v.purchaseDate) + '" max="' + esc(vehToday()) + '"></div></div>' +
+        '<div class="grid2"><div><label class="field" for="veReg">Registration month</label>' + vehMonthSel('veReg', v.regMonth, 'Not set') + '</div>' +
+        '<div><label class="field" for="veInsp">Inspection month</label>' + vehMonthSel('veInsp', v.inspMonth, 'Same as registration') + '</div></div>' +
+        '<p class="muted small">Registration and the Maine safety inspection are due at the end of these months. Not set = "Needs setup".</p>' +
+        '<div class="grid2">' + txt('veInsCo', 'Insurance company', v.insuranceCompany, 80) + txt('veInsPol', 'Policy number', v.insurancePolicy, 40) + '</div>' +
+        '<div class="grid2"><div><label class="field" for="veInsRen">Insurance renewal</label><input type="date" id="veInsRen" value="' + val(v.insuranceRenewal) + '"></div>' +
+        '<div><label class="techbox" style="margin-top:28px"><input type="checkbox" id="veInsRem"' + (v.insuranceReminder ? ' checked' : '') + '><span>Remind me</span></label></div></div>' +
+        '<div class="grid2">' + txt('veTire', 'Tire size', v.tireSize, 40) + txt('veOilType', 'Oil type', v.oilType, 40) + '</div>' +
+        '<div class="grid2">' + txt('veOilCap', 'Oil capacity', v.oilCapacity, 40) +
+        '<div><label class="field" for="veMiles">Current miles' + (id ? ' (adds a reading)' : '') + '</label><input type="text" inputmode="numeric" id="veMiles" maxlength="9" placeholder="' +
+          esc(v.lastReading !== null && v.lastReading !== undefined && id ? String(v.lastReading) : 'optional') + '"></div></div>' +
+        '<label class="field" for="veNotes">Notes (optional)</label><textarea id="veNotes" rows="2" maxlength="1000">' + val(v.notes) + '</textarea>' +
+        '<label class="field" for="vePhoto">Photo (optional, needs signal)</label><input type="file" id="vePhoto" accept="image/*">' +
+        (!id ? '<label class="techbox"><input type="checkbox" id="veStarter" checked><span>Add starter reminders: registration, inspection, oil change (intervals blank until you fill them in)</span></label>' : '') +
+        '<p class="muted small">Every field is optional except the nickname. Never put door, alarm or gate codes, passwords or where a key is kept here.</p>' +
+        '<button type="submit" class="btn primary big" id="veSave">' + (id ? 'Save vehicle' : 'Add vehicle') + '</button></form>' +
+        (id ? '<h2>Schedule</h2>' + v.rules.map(ruleForm).join('') +
+          '<form class="card" id="vehNewRule"><b>Add a reminder</b><label class="field" for="vnType">Type</label><select id="vnType">' +
+          S.veh.ruleTypes.filter(function (t) { return t !== 'Insurance'; }).map(function (t) { return '<option>' + esc(t) + '</option>'; }).join('') + '</select>' +
+          '<div class="grid2"><div><label class="field" for="vnMi">Every (miles)</label><input type="text" inputmode="numeric" id="vnMi"></div>' +
+          '<div><label class="field" for="vnMo">Every (months)</label><input type="text" inputmode="numeric" id="vnMo"></div></div>' +
+          '<button type="submit" class="btn small">Add</button></form>' : '');
+      $('#vehForm').onsubmit = function (ev) {
+        ev.preventDefault();
+        var p = { name: $('#veName').value, year: $('#veYear').value, make: $('#veMake').value, model: $('#veModel').value, trim: $('#veTrim').value,
+                  kind: $('#veKind').value, color: $('#veColor').value, vin: $('#veVin').value, plate: $('#vePlate').value,
+                  purchaseDate: $('#vePurchase').value, regMonth: $('#veReg').value, inspMonth: $('#veInsp').value,
+                  insuranceCompany: $('#veInsCo').value, insurancePolicy: $('#veInsPol').value, insuranceRenewal: $('#veInsRen').value,
+                  insuranceReminder: $('#veInsRem').checked, tireSize: $('#veTire').value, oilType: $('#veOilType').value,
+                  oilCapacity: $('#veOilCap').value, notes: $('#veNotes').value };
+        if ($('#veMiles').value) p.currentMiles = $('#veMiles').value;
+        if (id) p.id = id; else p.starterRules = $('#veStarter').checked;
+        var file = $('#vePhoto').files && $('#vePhoto').files[0];
+        $('#veSave').disabled = true;
+        call('apiVehSaveVehicle', p).then(function (r) {
+          toast(r.warning || 'Saved.', r.warning ? 6000 : 2500);
+          var next = function () { go('#tool/vehicles/' + r.id); };
+          if (file) return vehUploadPhoto(r.id, file).then(next, next);
+          next();
+        }).catch(function (err) { $('#veSave').disabled = false; fail(err); });
+      };
+      $all('form.vehrule').forEach(function (f) {
+        f.onsubmit = function (ev) {
+          ev.preventDefault();
+          function g(c) { var el = $(c, f); return el ? el.value : ''; }
+          call('apiVehSaveRule', { id: f.getAttribute('data-rid'), everyMiles: g('.rMi'), everyMonths: g('.rMo'), soonDays: g('.rSd'), soonMiles: g('.rSm'),
+                                   active: $('.rAct', f).checked }).then(function (r) { toast(r.warning || 'Saved.', r.warning ? 6000 : 2500); vehEdit(id); }).catch(fail);
+        };
+      });
+      if ($('#vehNewRule')) $('#vehNewRule').onsubmit = function (ev) {
+        ev.preventDefault();
+        call('apiVehSaveRule', { vehicleId: id, type: $('#vnType').value, everyMiles: $('#vnMi').value, everyMonths: $('#vnMo').value, active: true })
+          .then(function () { toast('Added.'); vehEdit(id); }).catch(fail);
+      };
+    }).catch(fail);
+  }
+
+  function vehUploadPhoto(vehicleId, file) {
+    toast('Saving the photo\u2026', 3000);
+    return Promise.all([compressImage(file, 1600, 0.82), compressImage(file, 400, 0.7)]).then(function (out) {
+      return call('apiVehUploadPhoto', { vehicleId: vehicleId, image: out[0].dataUrl, thumb: out[1].dataUrl });
+    }).then(function () { toast('Photo saved.'); }).catch(fail);
+  }
+
+  /* ================= Customers (v1.6) =================
+   * Tools > Customers: a read-only lookup in WES Job Manager 2026 > Customers (Tracy's sheet), approved by Doug Nov 9 2026.
+   * Shown only with CUSTOMERS_MODE mods / on (S.boot.customersMode 'on'). Its hooks end in "// v1.6 cust-hook". No Home card.
+   * ONLINE ONLY: results live in this page's memory while the screen is open (S.cust is cleared on leaving it); nothing is
+   * written to localStorage / IndexedDB, the phone app never remembers these replies, and with no signal it says so.
+   * Name, phone (tap to call), email (tap to email), address with Navigate, linked jobs / sites / open work orders / finish
+   * lists / generators. Notes come redacted from the server (codes, WiFi passwords, key locations removed).
+   */
+  ICONS.customers = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.5c1.9.8 3 2.7 3 5.5"/></svg>';
+  var CUST_TOOL = { id: 'customers', title: 'Customers', subtitle: 'Look up a customer: call, email, navigate (needs signal)', icon: 'customers',
+    action: { type: 'page', render: function (a) { renderCust(a); } } };
+  function custOn() { return !!(S.boot && S.boot.customersMode === 'on'); }
+  function custSyncTool() {
+    var i = TOOLS.indexOf(CUST_TOOL), on = custOn();
+    if (on && i < 0) TOOLS.push(CUST_TOOL);
+    if (!on && i >= 0) TOOLS.splice(i, 1);
+    if (!/^#tool\/customers/.test(location.hash || '')) S.cust = null; // never keep customer info after leaving the screen
+  }
+  function custNoSignal(err) {
+    var m = String(err && err.message || err);
+    return /^OFFLINE/.test(m) || (typeof navigator !== 'undefined' && navigator.onLine === false);
+  }
+  function custFail(err) {
+    var el = $('#custBody');
+    var msg = custNoSignal(err) ? 'Customer info needs signal. It is never saved on this phone, so it shows again once you are back online.' : errMsg(err);
+    if (el) el.innerHTML = '<p class="note warn" id="custSignal">' + esc(msg) + '</p>';
+    else fail(err);
+  }
+  function renderCust(key) {
+    if (!custOn()) { go('#tools'); return; }
+    if (key) return custDetail(decodeURIComponent(key));
+    return custList();
+  }
+  function custList() {
+    var q = (S.cust && S.cust.q) || '';
+    app.innerHTML = backLink('#tools', 'Tools') + '<h1>Customers</h1>' +
+      '<p class="sub">From the office customer list (read only). Needs signal.</p>' +
+      '<input type="search" id="custQ" placeholder="Search name, address or town" autocomplete="off" value="' + esc(q) + '">' +
+      '<div id="custBody"><div class="loading">Loading&#x2026;</div></div>';
+    var seq = 0, timer = null;
+    function run() {
+      var my = ++seq, qq = $('#custQ').value;
+      S.cust = { q: qq };
+      call('apiCustSearch', qq).then(function (r) {
+        if (my !== seq || !$('#custBody')) return;
+        $('#custBody').innerHTML = (r.results.length ? '<div class="card" id="custList">' + r.results.map(function (c) {
+          return '<a class="line custrow" data-key="' + esc(c.key) + '" href="#tool/customers/' + encodeURIComponent(c.key) + '"><span class="l"><span class="t">' + esc(c.name) + '</span>' +
+            '<span class="s">' + esc([c.address, c.town].filter(String).join(', ')) + '</span></span>' +
+            '<span class="r">' + (c.type ? '<span class="chip">' + esc(c.type) + '</span>' : '') + '</span></a>';
+        }).join('') + '</div>' : '<div class="empty">No customers match.</div>') +
+          (r.more ? '<p class="muted small">Showing the first ' + r.results.length + ' of ' + r.total + '. Type more to narrow it down.</p>' : '');
+      }).catch(function (err) { if (my === seq) custFail(err); });
+    }
+    $('#custQ').oninput = function () { clearTimeout(timer); timer = setTimeout(run, 300); };
+    run();
+  }
+  function custDetail(key) {
+    app.innerHTML = backLink('#tool/customers', 'Customers') + '<div id="custBody"><div class="loading">Loading&#x2026;</div></div>';
+    call('apiCustDetail', key).then(function (c) {
+      var el = $('#custBody');
+      if (!el) return;
+      var L = c.linked || {};
+      var line = function (label, html) { return '<div class="line"><span class="l"><span class="s">' + esc(label) + '</span><span class="t">' + html + '</span></span></div>'; };
+      el.innerHTML = '<h1>' + esc(c.name) + '</h1><p class="sub">' + esc([c.type, c.town].filter(String).join(' \u00b7 ')) + '</p>' +
+        '<div class="card" id="custContact">' +
+        (c.phone ? line('Phone', c.tel ? '<a id="custTel" href="tel:' + esc(c.tel) + '">' + esc(c.phone) + '</a>' : esc(c.phone)) : '') +
+        (c.email ? line('Email', '<a id="custMail" href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a>') : c.emailText ? line('Email', esc(c.emailText)) : '') +
+        (c.fullAddress ? line('Address', esc(c.fullAddress)) : '') +
+        '<div class="grid2">' + (c.tel ? '<a class="btn primary" href="tel:' + esc(c.tel) + '">Call</a>' : '') +
+        (c.navUrl ? '<a class="btn" id="custNav" target="_blank" rel="noopener" href="' + esc(c.navUrl) + '">Navigate</a>' : '') + '</div>' +
+        (c.email ? '<a class="btn block" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '</div>' +
+        ((c.jobs || []).length || (c.sites || []).length ? '<h2>Jobs</h2><div class="card" id="custJobs">' +
+          ((c.jobs || []).length ? line('Jobs', c.jobs.map(function (j) { return '<span class="chip">' + esc(j) + '</span>'; }).join(' ')) : '') +
+          ((c.sites || []).length ? line('Job sites', c.sites.map(function (j) { return '<span class="chip">' + esc(j) + '</span>'; }).join(' ')) : '') + '</div>' : '') +
+        ((L.workOrders || []).length ? '<h2>Open work orders</h2><div class="card" id="custWo">' + L.workOrders.map(function (w) {
+          return '<div class="line"><span class="l"><span class="t">' + esc(w.date || 'No date') + ' &#183; ' + esc(w.status) + '</span><span class="s">' + esc(w.description) + '</span></span></div>';
+        }).join('') + '</div>' : '') +
+        ((L.finishLists || []).length ? '<h2>Finish lists</h2><div class="card" id="custFl">' + L.finishLists.map(function (f) {
+          return '<a class="line" href="#tool/finish/' + encodeURIComponent(f.id) + '"><span class="l"><span class="t">' + esc(f.project || f.id) + '</span><span class="s">' + esc(f.status) + '</span></span></a>';
+        }).join('') + '</div>' : '') +
+        ((L.generators || []).length ? '<h2>Generators</h2><div class="card" id="custGen">' + L.generators.map(function (g) {
+          return '<div class="line"><span class="l"><span class="t">' + esc(g.label) + '</span><span class="s">' + esc(g.site) + '</span></span></div>';
+        }).join('') + '</div>' : '') +
+        (c.notes ? '<h2>Notes</h2><div class="card" id="custNotes"><p style="white-space:pre-wrap;margin:0">' + esc(c.notes) + '</p></div>' : '') +
+        ((c.referral || c.source) ? '<p class="muted small">' + esc([c.referral ? 'Contractor / referral: ' + c.referral : '', c.source ? 'Source: ' + c.source : ''].filter(String).join(' \u00b7 ')) + '</p>' : '') +
+        '<p class="muted small">Read only, from the office list. Ask the office to change anything. Codes, WiFi passwords and key spots are never shown.</p>';
+    }).catch(custFail);
   }
 
   start();
