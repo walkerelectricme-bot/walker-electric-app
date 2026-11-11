@@ -24,6 +24,10 @@
  *  - v1.6 customer list (CUSTOMERS_MODE mods / on): ONLINE ONLY. Customer contact info is never kept on the phone: the
  *    replies go straight to the page, nothing is remembered in the store, and with no signal the screen says so.
  *  - Everything else (photos, work orders, moderator screens...): needs signal, with a clear message.
+ *  - v1.7 fresh settings: when a background full sync brings a boot whose switches differ from the phone's copy (a tool
+ *    turned on or off, moderator added or removed), onBoot listeners get the new boot so the page updates Tools / Home
+ *    right away (no second reopen). A cached boot missing a key this app version expects (BOOT_KEYS) is refreshed with
+ *    a full sync before the first screen, once per app version. v1.7 generator "Edit name / address": needs signal.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
  * tapped. Changes go up in batches (apiSync), oldest first; the server is idempotent on the client ID, so a retry after
@@ -55,6 +59,8 @@
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
   var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
+  // v1.7 fresh settings: the boot switches this app version knows (a cached boot without one of them is refreshed first)
+  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner'];
   var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -137,9 +143,21 @@
     this.slips = [];          // v1.3 offline slip queue (every person on this phone; mySlips() = mine)
     this.slipBusy = {};       // cid -> true while that slip is on its way
     this.slipListeners = [];  // fn(event, item, info) for slips finished or refused in the background
+    this.bootListeners = [];  // v1.7: fn(boot) when a fresh boot changed the switches (tools, moderator)
   }
 
   Engine.prototype.on = function (fn) { this.listeners.push(fn); };
+  /** v1.7: fn(boot) is called when fresh settings from the server change what the screens show (see bootSig). */
+  Engine.prototype.onBoot = function (fn) { this.bootListeners.push(fn); };
+  /** The parts of a boot the screens are drawn from: tool switches and who I am (moderator, owner, name). */
+  function bootSig(b) {
+    if (!b) return '';
+    var u = b.user || {}, o = {};
+    BOOT_KEYS.forEach(function (k) { o[k] = b[k] === undefined ? null : b[k]; });
+    o.user = [u.email, u.name, u.role, !!u.isModerator, u.tier];
+    return JSON.stringify(o);
+  }
+  function bootMissing(b) { return !b || BOOT_KEYS.some(function (k) { return !(k in b); }); }
   Engine.prototype.emit = function () { var self = this; this.listeners.forEach(function (f) { try { f(self); } catch (e) {} }); };
   Engine.prototype.nowMs = function () { return this.clock().getTime(); };
   Engine.prototype.today = function () { return localDs(this.clock()); };
@@ -480,9 +498,11 @@
   Engine.prototype.pullFull = function () {
     var self = this;
     var gv = self.genCache() ? self.genCache().data.version : ''; // v1.4: unchanged generator copy = {same: true}, no data
+    var oldSig = bootSig(self.kv.boot), hadBoot = !!self.kv.boot;
     return self.rcall('apiOfflineSnapshot', [gv ? { genVersion: gv } : {}], 60000).then(function (s) {
       var at = self.nowMs(), w = [];
       if (s.boot) w.push(self.setKv('boot', s.boot));
+      var bootChanged = !!(s.boot && hadBoot && bootSig(s.boot) !== oldSig); // v1.7: tell the page (Tools / Home)
       if (s.time) w.push(self.setKv('time', s.time));
       if (s.points !== undefined) w.push(self.setKv('points', { at: at, data: s.points }));
       if (s.jobs) w.push(self.setKv('jobs', { at: at, from: s.jobs.from, to: s.jobs.to, days: s.jobs.days }));
@@ -491,8 +511,16 @@
       if (s.mats) w.push(self.setKv('mats', { at: at, data: s.mats })); // v1.2 materials picker list (search works with no signal)
       if (s.gen) w.push(self.genStore(s.gen)); // v1.4 generator service tool (stops, search, not serviced this year with no signal)
       self.meta.lastFull = at; self.meta.lastSync = at;
+      if (s.boot) self.meta.bootFor = self.version; // v1.7: this app version has seen a fresh boot
       w.push(self.saveMeta());
-      return Promise.all(w).then(function () { self.emit(); return s; });
+      return Promise.all(w).then(function () {
+        if (bootChanged && self.timeData()) {
+          var b = self.composeBoot();
+          self.bootListeners.forEach(function (f) { try { f(clone(b)); } catch (e) {} });
+        }
+        self.emit();
+        return s;
+      });
     });
   };
 
@@ -573,6 +601,20 @@
     var self = this;
     if (self.denied) return Promise.reject(self.denied);
     var have = self.kv.boot && self.timeData() && self.kv.boot.user && normEmail(self.kv.boot.user.email) === normEmail(self.me());
+    if (have && bootMissing(self.kv.boot) && self.meta.bootFor !== self.version && self.likelyOnline() && !self.syncing) {
+      // v1.7: the copy on this phone is from an older app version (no switch for a tool this version has): get fresh
+      // settings before the first screen, once per version. No signal / an error: the copy on the phone, as before.
+      self.meta.bootFor = self.version;
+      return self.pullFull().then(function () {
+        setTimeout(function () { self.syncNow({ force: true }); }, 0);
+        return self.composeBoot();
+      }, function (e) {
+        if (e && DENIED.test(e.code || '')) throw e;
+        self.saveMeta();
+        setTimeout(function () { self.syncNow({ force: true }); }, 0);
+        return self.composeBoot();
+      });
+    }
     if (have) {
       setTimeout(function () { self.syncNow({ force: true }); }, 0); // app open: slips waiting go up now (no backoff wait)
       return Promise.resolve(self.composeBoot());
@@ -1141,7 +1183,7 @@
         case 'apiGenSetUsualOrder': return self.genUsualOrder(args[0], args[1], args[2]);
         case 'apiGenSetPin': return self.genSetPin(args[0]);
         case 'apiGenHistory': case 'apiGenSaveLoop': case 'apiGenAddStop': case 'apiGenRemoveStop': case 'apiGenAddGenerator':
-        case 'apiGenSetCustomerActive':
+        case 'apiGenSetCustomerActive': case 'apiGenEditCustomer': // v1.7: name / address edits need signal (not queued)
           return self.genPass(fn, args);
         // v1.6 vehicle tracker: the list from the phone's copy with no signal; service / miles through the outbox
         case 'apiVehSnapshot': return self.read(fn, args, self.reads().veh || null, function (d) { self.remember('veh', d); },
@@ -1155,6 +1197,6 @@
     });
   };
 
-  return { Engine: Engine, statusLine: statusLine, applyOp: applyOp, GEN_QUEUED_MSG: GEN_QUEUED_MSG, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, CUST_NEEDS_SIGNAL: CUST_NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
+  return { Engine: Engine, BOOT_KEYS: BOOT_KEYS, bootSig: bootSig, statusLine: statusLine, applyOp: applyOp, GEN_QUEUED_MSG: GEN_QUEUED_MSG, uuid: uuid, hash: hash, NEEDS_SIGNAL: NEEDS_SIGNAL, CUST_NEEDS_SIGNAL: CUST_NEEDS_SIGNAL, QUEUED_MSG: QUEUED_MSG,
            slipBackoff: slipBackoff, slipFailKind: slipFailKind, SLIP_BACKOFF_MS: SLIP_BACKOFF_MS, SLIP_QUEUED_MSG: SLIP_QUEUED_MSG };
 });

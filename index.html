@@ -643,6 +643,7 @@
     closePhoto();
     setTab(tab);
     if (page.indexOf('mod-') === 0 && !isMod()) { go('#home'); return; }
+    if (page === 'mod-mods') return renderModMods(); // v1.7 mods-hook
     switch (page) {
       case 'home': return renderHome();
       case 'log': return renderLog(p[1], p[2]);
@@ -737,6 +738,7 @@
     if (S.glowNext) { var g = S.glowNext; S.glowNext = ''; setTimeout(function () { glow($(g)); }, 30); }
     loadJobs(S.homeDay);
     loadWeekStrip();
+    homeV17(); // v1.7 ui-hook
     // fresh numbers (a crew mate's slip may have earned me a point); my own only
     if (S.points) call('apiPoints').then(function (p) { S.points = p; drawPill(); if ($('#streakRisk')) drawRisk(); }).catch(function () {});
   }
@@ -1048,6 +1050,7 @@
       if (odd) {
         call('apiOddSlip', odd.id, input).then(function (r) {
           closeModal();
+          celebrate('slip', false); // v1.7 ui-hook
           toast('Slip saved. Added to the calendar for ' + longDate(input.date) + ' (' + (r.color.label || r.color.name) + '). Moved to Done.' +
             applyPoints(r.points, ''), 5000);
           go('#tool/odds/' + odd.id);
@@ -1070,6 +1073,7 @@
         }, function (err) { return msg + ' Finish list NOT updated: ' + errMsg(err); });
       }).then(function (msg) {
         closeModal();
+        celebrate('slip', false); // v1.7 ui-hook
         toast(msg, 5000);
         if ($('#jobs')) loadJobs(S.homeDay);
       }).catch(function (err) { btn.disabled = false; btn.textContent = 'Submit slip'; fail(err); });
@@ -1986,6 +1990,7 @@
       call('apiSaveEntry', input).then(function (r) {
         if (!email) { if (r.timeCard.week.isCurrent || !S.tc) S.tc = r.timeCard; else refreshMine(); }
         glow(btn);
+        celebrateSave(r); // v1.7 ui-hook
         var pts = email ? '' : applyPoints(r.points, '#timeCard');
         toast((r.warning || (r.unchanged ? 'No changes.' : r.created ? 'Saved.' : 'Change saved.')) + pts, r.warning ? 7000 : pts ? 4000 : 2500);
         go(email ? '#log/' + r.entry.date + '/' + encodeURIComponent(email) : (r.entry && r.entry.date === S.boot.today ? '#home' : '#log/' + r.entry.date));
@@ -2035,6 +2040,7 @@
         '<a class="drill" href="#mod-settings"><span>Settings and reminders</span><span class="val"></span></a></div>' : '') +
       '<p class="muted small ver" id="moreVer">' + esc(S.boot.app.name) + ' ' + esc(S.boot.app.version) + '</p>';
     slipQMoreLink(); // v1.3 slipq-hook
+    modsMoreLink(); // v1.7 mods-hook
     $('#forget').onclick = function () {
       if (!window.confirm('Sign out on this phone? You will need the link from your invite email to get back in.')) return;
       lsDel('key'); S.key = ''; S.boot = null; denied('NOT_INVITED: Signed out on this phone.');
@@ -2298,6 +2304,7 @@
     var p = odd ? call('apiOddSlip', odd.id, input, opts) : call('apiSubmitSlip', input, opts);
     p.then(function (r) {
       closeModal();
+      celebrate('slip', !!r.queued); // v1.7 celebration
       if (r.queued) {
         toast(r.message || 'Saved on this phone. Waiting to sync.', 7000);
       } else if (odd) {
@@ -2648,6 +2655,7 @@
         case 'add': return genAddPage(G);
         case 'pin': return genPinMap(G, b);
         case 'map': return genLoopMap(G);
+        case 'editcust': return genEditCust(G, b, ''); // v1.7 customer name / address
         default: return genTodayPage(G);
       }
     }).catch(function (err) {
@@ -2735,7 +2743,7 @@
       '<div class="card gen-pin" id="genPinCard"></div>' +
       '<details class="card gen-fold" id="genCust"><summary><b>Customer</b></summary>' +
         genKv('Name', c.name) + (c.phone ? '<div class="line"><div class="l"><span class="s">Phone</span><a class="t" href="tel:' + esc(String(c.phone).replace(/[^\d+]/g, '')) + '">' + esc(c.phone) + '</a></div></div>' : '') +
-        genKv('Address', c.address) + (c.access ? '<div class="line"><div class="l"><span class="s">Access</span><span class="t" id="genAccess">' + genMultiline(c.access) + '</span></div></div>' : '') +
+        genKv('Address', c.address) + genEditCustBtn(c, g) + (c.access ? '<div class="line"><div class="l"><span class="s">Access</span><span class="t" id="genAccess">' + genMultiline(c.access) + '</span></div></div>' : '') +
         (c.flags ? '<div class="line"><div class="l"><span class="s">Flags</span><span class="t">' + genMultiline(c.flags) + '</span></div></div>' : '') +
         (c.notes ? '<div class="line"><div class="l"><span class="s">Notes</span><span class="t" id="genCustNotes">' + genMultiline(c.notes) + '</span></div></div>' : '') +
         (c.active === false ? '<p class="note" id="genInactiveNote">Not serviced anymore: this customer is left out of the loops, search and "Not serviced this year". The records and history stay.</p>' : '') +
@@ -2755,6 +2763,69 @@
       var btn = $('#genFullHist'); btn.disabled = true;
       call('apiGenHistory', gid).then(function (r) { $('#genHistList').innerHTML = genHistHtml(r.history); btn.classList.add('hidden'); })
         .catch(function (err) { btn.disabled = false; fail(err); });
+    };
+  }
+  /* ---- v1.7 Edit a customer's name and address (GEN_EDIT_MODE; S.boot.genEditMode 'on'). Needs signal. ---- */
+  function genEditOn() { return !!(S.boot && S.boot.genEditMode === 'on'); }
+  function genEditCustBtn(c, g) {
+    if (!genEditOn() || !c || !c.id) return '';
+    return '<div class="actions"><a class="btn small" id="genEditCustBtn" href="#tool/generators/editcust/' + genEnc(g.id) + '">Edit name / address</a>' +
+      ' <span class="muted small">(needs signal)</span></div>' +
+      (g.siteAddress ? '<p class="muted small" id="genSiteNote">This generator has its own site address (' + esc(g.siteAddress) + '). The stop shows that one; it is not changed here.</p>' : '');
+  }
+  var GEN_CUST_FIELDS = [['name', 'Customer name'], ['street', 'Street'], ['town', 'Town'], ['state', 'State'], ['zip', 'Zip']];
+  /** The edit form. msg: a note on top (e.g. the "someone changed it" message after a refresh). */
+  function genEditCust(G, gid, msg) {
+    var g = G.generators[gid], c = g && G.customers[g.cid];
+    if (!g || !c) { app.innerHTML = genHead(G, '') + '<div class="card"><p>That customer is not on this phone\'s list. Tap Refresh with signal.</p></div>'; genWire(); return; }
+    if (!genEditOn()) { go('#tool/generators/stop/' + genEnc(gid)); return; }
+    var val = { name: c.name || '', street: c.street || '', town: c.town || '', state: c.state || '', zip: c.zip || '' };
+    app.innerHTML = backLink('#tool/generators/stop/' + genEnc(gid), c.name || 'Stop') + '<h1>Edit customer</h1>' +
+      '<p class="sub">' + esc(c.id) + ' &#183; changes the Generator Service Database for every stop, search and loop</p>' +
+      (msg ? '<div class="note warn" id="genEditMsg">' + esc(msg) + '</div>' : '') +
+      '<form class="card" id="genEditForm" autocomplete="off">' + GEN_CUST_FIELDS.map(function (f) {
+        return '<label class="field" for="genE_' + f[0] + '">' + esc(f[1]) + '</label><input type="text" id="genE_' + f[0] + '" value="' + esc(val[f[0]]) + '"' +
+          (f[0] === 'state' ? ' maxlength="20"' : f[0] === 'zip' ? ' inputmode="numeric" maxlength="10"' : '') + '>';
+      }).join('') +
+      '<p class="muted small">Name and address only. Never type gate, door or alarm codes, WiFi passwords or where a key is kept. Every change is kept with who made it and when.</p>' +
+      '<div class="card hidden" id="genEditConfirm"></div>' +
+      '<button class="btn primary big" type="submit" id="genEditSave">Save changes</button></form>';
+    $('#genEditForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var now = {}, changes = [];
+      GEN_CUST_FIELDS.forEach(function (f) {
+        now[f[0]] = String($('#genE_' + f[0]).value || '').replace(/\s+/g, ' ').trim();
+        if (now[f[0]] !== val[f[0]]) changes.push(f[1] + ': "' + (val[f[0]] || '(blank)') + '" \u2192 "' + (now[f[0]] || '(blank)') + '"');
+      });
+      if (!changes.length) { toast('Nothing changed.'); return; }
+      if (!now.name) { toast('The customer name can\'t be blank.', 4000); return; }
+      if (GEN_CUST_FIELDS.some(function (f) { return genLooksLikeCode(now[f[0]]); })) {
+        toast('Customer name and address can\'t hold door, alarm or gate codes, WiFi passwords or where a key is kept. Please take it out.', 6000); return;
+      }
+      // the confirm step: what changes, then Yes / Cancel
+      var box = $('#genEditConfirm');
+      box.innerHTML = '<h3>Save these changes?</h3>' + changes.map(function (t) { return '<p class="small">' + esc(t) + '</p>'; }).join('') +
+        '<p class="muted small">Every phone gets the new name and address on its next update.</p>' +
+        '<div class="actions"><button type="button" class="btn primary" id="genEditYes">Yes, save</button><button type="button" class="btn" id="genEditNo">Cancel</button></div>';
+      box.classList.remove('hidden');
+      $('#genEditSave').classList.add('hidden');
+      $('#genEditNo').onclick = function () { box.classList.add('hidden'); box.innerHTML = ''; $('#genEditSave').classList.remove('hidden'); };
+      $('#genEditYes').onclick = function () {
+        var yes = $('#genEditYes'); yes.disabled = true;
+        call('apiGenEditCustomer', { customerId: c.id, baseSig: c.sig || '', name: now.name, street: now.street, town: now.town, state: now.state, zip: now.zip })
+          .then(function (r) {
+            if (r.snapshot) S.gen = r.snapshot;
+            toast(r.unchanged ? 'Nothing changed.' : 'Saved: ' + (r.changed || []).join(', ') + '.', 5000);
+            go('#tool/generators/stop/' + genEnc(gid));
+          }).catch(function (err) {
+            var m = String(err && err.message || err);
+            if (/CHANGED:/.test(m)) {
+              genLoad(true).then(function (G2) { genEditCust(G2, gid, errMsg(err)); }).catch(function () { yes.disabled = false; fail(err); });
+              return;
+            }
+            yes.disabled = false; fail(err);
+          });
+      };
     };
   }
   /** v1.5 "Stop servicing" / "Service again": only the customer's Active cell changes (needs signal; logged). */
@@ -4291,6 +4362,213 @@
         '<p class="muted small">Read only, from the office list. Ask the office to change anything. Codes, WiFi passwords and key spots are never shown.</p>';
     }).catch(custFail);
   }
+
+  /* ================= Moderators and fresh settings (v1.7) =================
+   * More > Moderators (#mod-mods): every moderator sees who the moderators are; only Doug (S.boot.isOwner, checked again
+   * by the server) can add or remove one, picked from the user list, with a confirm step. Doug can't be removed; bots,
+   * agents, turned-off people and anyone who never signed in can't be added (the server says why). Each change goes on
+   * the ModeratorLog tab. Its one-line hooks end in "// v1.7 mods-hook" (the router and the More page).
+   * Fresh settings: on the phone app, when a background sync brings new switches (a tool turned on or off, a moderator
+   * change), S.boot is updated and Tools / Home / More are drawn again right away (engine.js onBoot). No second reopen.
+   */
+  function modsMoreLink() {
+    var a = $('a.drill[href="#mod-users"]');
+    if (!a || !isMod()) return;
+    a.insertAdjacentHTML('afterend', '<a class="drill" id="drillMods" href="#mod-mods"><span>Moderators</span><span class="val">' +
+      (S.boot.isOwner ? 'add / remove' : 'view') + '</span></a>');
+  }
+  function renderModMods() {
+    loading();
+    call('apiModModerators').then(function (d) {
+      var ok = d.candidates.filter(function (c) { return c.ok; }), no = d.candidates.filter(function (c) { return !c.ok; });
+      app.innerHTML = backLink('#more', 'More') + '<h1>Moderators</h1>' +
+        '<p class="sub">Moderators see everyone\'s time, users and invites, points and settings. ' +
+        (d.canEdit ? 'Only you can change who is a moderator.' : 'Only Doug can change who is a moderator.') + ' Bots are never moderators.</p>' +
+        '<div class="card" id="modsList">' + d.moderators.map(function (m) {
+          return '<div class="line"><div class="l"><span class="t">' + esc(m.name) + '</span><span class="s">' + esc(m.email) + '</span></div><span class="r">' +
+            (m.owner ? '<span class="chip solid">Owner (always)</span>' : d.canEdit ? '<button type="button" class="btn small danger" data-rm="' + esc(m.email) + '" data-name="' + esc(m.name) + '">Remove</button>' : '<span class="chip">Moderator</span>') +
+            '</span></div>';
+        }).join('') + '</div>' +
+        (d.canEdit ? '<div class="card" id="modsAdd"><h3>Add a moderator</h3>' +
+          (ok.length ? '<label class="field" for="modsPick">From the user list</label><select id="modsPick"><option value="">Pick a person</option>' + ok.map(function (c) {
+            return '<option value="' + esc(c.email) + '">' + esc(c.name + ' (' + c.email + ')') + '</option>';
+          }).join('') + '</select><button type="button" class="btn primary block" id="modsAddBtn" style="margin-top:10px">Make moderator</button>'
+            : '<p class="muted">No one on the user list can be made a moderator right now.</p>') +
+          (no.length ? '<details class="small" id="modsNot"><summary>Can\'t be moderators (' + no.length + ')</summary>' + no.map(function (c) {
+            return '<p class="small"><b>' + esc(c.name) + '</b> ' + esc(c.email) + ': ' + esc(c.reason) + '</p>';
+          }).join('') + '</details>' : '') + '</div>' : '') +
+        '<div class="card hidden" id="modsConfirm"></div>' +
+        (d.log.length ? '<div class="card" id="modsLog"><h3>Recent changes</h3>' + d.log.map(function (l) {
+          return '<p class="small">' + esc(l.at) + ': ' + esc(l.by) + ' ' + esc(l.action === 'Added' ? 'added' : 'removed') + ' ' + esc(l.name || l.email) + '</p>';
+        }).join('') + '</div>' : '') +
+        '<p class="muted small">' + (d.source === 'built-in' ? 'Using the built-in list (Doug and Duane) until the first change.' : 'Saved in Settings > MODERATORS.') +
+        ' A change applies the next time that person\'s app syncs.</p>';
+      if (!d.canEdit) return;
+      var ask = function (email, name, on) {
+        var box = $('#modsConfirm');
+        box.innerHTML = '<h3>' + esc(on ? 'Make ' + name + ' a moderator?' : 'Remove ' + name + ' as a moderator?') + '</h3><p class="small">' +
+          esc(on ? name + ' will see everyone\'s time, users and invites, points and settings, and can invite people.' :
+            name + ' goes back to a regular tech. Their time, slips and points stay.') + '</p>' +
+          '<div class="actions"><button type="button" class="btn primary" id="modsYes">' + esc(on ? 'Yes, make moderator' : 'Yes, remove') + '</button>' +
+          '<button type="button" class="btn" id="modsNo">Cancel</button></div>';
+        box.classList.remove('hidden');
+        box.scrollIntoView && box.scrollIntoView();
+        $('#modsNo').onclick = function () { box.classList.add('hidden'); box.innerHTML = ''; };
+        $('#modsYes').onclick = function () {
+          $('#modsYes').disabled = true;
+          call('apiModSetModerator', email, on).then(function (r) {
+            toast(r.unchanged ? 'No change.' : (on ? name + ' is now a moderator.' : name + ' is no longer a moderator.'), 5000);
+            renderModMods();
+          }).catch(function (err) { $('#modsYes').disabled = false; fail(err); });
+        };
+      };
+      $all('[data-rm]').forEach(function (b) { b.onclick = function () { ask(b.getAttribute('data-rm'), b.getAttribute('data-name'), false); }; });
+      var addBtn = $('#modsAddBtn');
+      if (addBtn) addBtn.onclick = function () {
+        var sel = $('#modsPick'), email = sel.value;
+        if (!email) { toast('Pick a person first.'); return; }
+        ask(email, ok.filter(function (c) { return c.email === email; })[0].name, true);
+      };
+    }).catch(fail);
+  }
+
+  /** Fresh switches from the server (phone app): keep S.boot in step and redraw Tools / Home / More when they changed. */
+  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner'];
+  function bootView(b) {
+    var u = b.user || {};
+    return JSON.stringify([BOOT_SWITCHES.map(function (k) { return b[k] === undefined ? null : b[k]; }), !!u.isModerator, u.role, u.name, u.tier]);
+  }
+  function bootApply(b) {
+    if (!S.boot || !b || !b.user || !S.boot.user) return false;
+    if (String(b.user.email || '').toLowerCase() !== String(S.boot.user.email || '').toLowerCase()) return false;
+    var before = bootView(S.boot);
+    BOOT_SWITCHES.forEach(function (k) { if (k in b) S.boot[k] = b[k]; });
+    ['isModerator', 'role', 'name', 'tier'].forEach(function (k) { if (k in b.user) S.boot.user[k] = b.user[k]; });
+    if (bootView(S.boot) === before) return false;
+    var who = document.getElementById('who'); if (who) who.textContent = S.boot.user.name;
+    var page = hashParts()[0] || 'home';
+    var typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (modalEl || typing) return true; // never redraw over a popup or something being typed; the next screen has it
+    if (page === 'home' || page === 'tools' || page === 'more' || (page.indexOf('mod-') === 0 && !isMod())) route();
+    return true;
+  }
+  if (window.WES_ENGINE && typeof window.WES_ENGINE.onBoot === 'function') {
+    window.WES_ENGINE.onBoot(function (b) { setTimeout(function () { bootApply(b); }, 0); });
+  }
+  window.WES_BOOT_TEST = { apply: bootApply };
+
+  /* ---- v1.7 celebration and the bigger Home time card (Doug, Nov 11) ----
+   * celebrate(kind, queued): a quick overlay after a time entry is saved or a slip goes in. It closes itself after about
+   * 1.8 s or on a tap, never takes the screen (taps go through to the page) and makes no sound. Queued on the phone with
+   * no signal: "Saved, will sync when you have signal", never "sent". prefers-reduced-motion: no animation.
+   * homeV17(): Home puts "This week" above "Today's jobs" and makes Today's time card bigger: today's hours large and a
+   * small bar chart of this week's hours (the app's own week, from S.tc: the phone's cached time data, so it works with
+   * no signal), today highlighted, the week total. Inline SVG and CSS only. Its hooks end in "// v1.7 ui-hook".
+   */
+  var CELEB_MS = 1800;
+  function v17Css() {
+    if (document.getElementById('v17css')) return;
+    var st = document.createElement('style'); st.id = 'v17css';
+    st.textContent =
+      '#celebrate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9000;pointer-events:none}' +
+      '#celebrate .cb{pointer-events:auto;background:#fff;color:#1b2430;border-radius:20px;padding:22px 30px;min-width:200px;text-align:center;' +
+        'box-shadow:0 12px 40px rgba(0,0,0,.25);animation:cbIn .28s ease-out both}' +
+      '#celebrate.out .cb{animation:cbOut .25s ease-in both}' +
+      '#celebrate .ci{font-size:44px;line-height:1;display:block;margin-bottom:8px}' +
+      '#celebrate svg{width:64px;height:64px;display:block;margin:0 auto 8px}' +
+      '#celebrate svg circle{fill:#1f9d55}#celebrate.q svg circle{fill:#d98a00}' +
+      '#celebrate svg path{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:48;stroke-dashoffset:48;animation:cbTick .45s .15s ease-out forwards}' +
+      '#celebrate .ct{font-weight:700;font-size:18px}#celebrate .cs{font-size:13px;color:#5b6675;margin-top:4px}' +
+      '@keyframes cbIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}' +
+      '@keyframes cbOut{to{opacity:0;transform:scale(.95)}}@keyframes cbTick{to{stroke-dashoffset:0}}' +
+      '@media (prefers-reduced-motion: reduce){#celebrate .cb,#celebrate.out .cb{animation:none}#celebrate svg path{animation:none;stroke-dashoffset:0}}' +
+      '#timeCard.tc17{padding-top:16px}#timeCard.tc17 #todayHours{display:none}' +
+      '#tcBig{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 0 10px}' +
+      '#tcBig .big{font-size:44px;font-weight:800;line-height:1;letter-spacing:-1px}#tcBig .big small{font-size:16px;font-weight:600;margin-left:3px;color:#5b6675}' +
+      '#tcBig .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#5b6675;margin-bottom:4px}' +
+      '#tcBig .wk{text-align:right}#tcBig .wkt{font-size:18px;font-weight:700}' +
+      '#tcChart{width:100%;height:96px;display:block}#tcChart .bar{fill:#c9d3df}#tcChart .bar.today{fill:#1f6feb}#tcChart .bar.off{fill:#e7c66b}' +
+      '#tcChart text{font-size:10px;fill:#5b6675;text-anchor:middle}#tcChart text.today{fill:#1f6feb;font-weight:700}';
+    document.head.appendChild(st);
+  }
+  function reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+  /** kind: 'time' | 'slip'. queued: saved on this phone only (no signal yet). */
+  function celebrate(kind, queued) {
+    v17Css();
+    var old = document.getElementById('celebrate'); if (old) old.parentNode.removeChild(old);
+    var line = queued ? 'Saved, will sync when you have signal' : kind === 'slip' ? 'Slip sent' : 'Time saved';
+    var el = document.createElement('div');
+    el.id = 'celebrate'; el.className = (queued ? 'q' : 'ok') + (reducedMotion() ? ' still' : '');
+    el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<div class="cb">' + (kind === 'slip' && !queued ? '<span class="ci" aria-hidden="true">&#127881;</span>' :
+      '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30"></circle><path d="M19 33 l9 9 l17 -19"></path></svg>') +
+      '<div class="ct" id="celebrateText">' + esc(line) + '</div>' + (queued ? '<div class="cs">' + (kind === 'slip' ? 'Slip' : 'Time') + ' is safe on this phone.</div>' : '') + '</div>';
+    document.body.appendChild(el);
+    var gone = false;
+    var close = function () {
+      if (gone) return; gone = true;
+      document.removeEventListener('pointerdown', close, true);
+      clearTimeout(t);
+      if (reducedMotion()) { if (el.parentNode) el.parentNode.removeChild(el); return; }
+      el.classList.add('out');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
+    };
+    var t = setTimeout(close, CELEB_MS);
+    el.onclick = close;
+    setTimeout(function () { if (!gone) document.addEventListener('pointerdown', close, true); }, 0); // any tap closes it, and still goes through
+    celebrate.last = { kind: kind, queued: !!queued, text: line };
+    return el;
+  }
+  /** After apiSaveEntry: celebrate a real save (not "No changes"). */
+  function celebrateSave(r) {
+    if (!r || r.unchanged) return;
+    celebrate('time', !!r.queued);
+  }
+  function homeV17() {
+    v17Css();
+    // "This week" above "Today's jobs"
+    var wk = $('#weekStrip'), jb = $('#jobs');
+    var wkCard = wk && wk.parentNode, jbCard = jb && jb.parentNode;
+    if (wkCard && jbCard && wkCard.parentNode === jbCard.parentNode) jbCard.parentNode.insertBefore(wkCard, jbCard);
+    // the bigger time card
+    var tcEl = $('#timeCard'), tc = S.tc;
+    if (!tcEl || !tc) return;
+    tcEl.classList.add('tc17');
+    var head = $('.card-head', tcEl);
+    if (head) head.insertAdjacentHTML('afterend', tcBigHtml(tc));
+  }
+  function tcBigHtml(tc) {
+    var w = tc.week && tc.week.isCurrent ? tc.week : null;
+    var off = tc.todayDayType && tc.todayDayType !== 'Work';
+    var html = '<div id="tcBig"><div><div class="lbl">Today</div><div class="big" id="todayBig">' +
+      (off ? esc(tc.todayDayType) : esc(fmtHNum(tc.todayHours)) + '<small>hrs</small>') + '</div></div>' +
+      (w ? '<div class="wk"><div class="lbl">This week</div><div class="wkt" id="weekBigTotal">' + esc(fmtH(w.totalHours)) + '</div></div>' : '') + '</div>';
+    if (w && w.days && w.days.length) html += weekChart(w);
+    return html;
+  }
+  function fmtHNum(h) { var n = Math.round((Number(h) || 0) * 100) / 100; return String(n); }
+  /** Inline SVG bars, one per day of the app's week; today highlighted, days off in amber. */
+  function weekChart(w) {
+    var days = w.days, n = days.length, W = 280, H = 96, top = 14, base = H - 18, slot = W / n, bw = Math.min(26, slot * 0.6);
+    var hrs = days.map(function (d) { return Math.max(0, Number(d.hours) || 0); });
+    var max = Math.max(8, Math.max.apply(null, hrs));
+    var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var out = '<svg id="tcChart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Hours this week: ' +
+      esc(days.map(function (d, i) { return DOW[new Date(d.date + 'T12:00:00').getDay()] + ' ' + fmtHNum(hrs[i]); }).join(', ')) + '">';
+    days.forEach(function (d, i) {
+      var h = hrs[i], bh = h > 0 ? Math.max(3, (base - top) * h / max) : 0, x = slot * i + (slot - bw) / 2;
+      var cls = 'bar' + (d.isToday ? ' today' : '') + (d.dayType && d.dayType !== 'Work' ? ' off' : '');
+      var dow = DOW[new Date(d.date + 'T12:00:00').getDay()];
+      out += '<rect class="' + cls + '" data-date="' + esc(d.date) + '" data-hours="' + h + '" x="' + x.toFixed(1) + '" y="' + (base - bh).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="4"><title>' + esc(dow + ': ' + fmtH(h)) + '</title></rect>';
+      if (h > 0) out += '<text x="' + (slot * i + slot / 2).toFixed(1) + '" y="' + (base - bh - 3).toFixed(1) + '"' + (d.isToday ? ' class="today"' : '') + '>' + esc(fmtHNum(h)) + '</text>';
+      out += '<text x="' + (slot * i + slot / 2).toFixed(1) + '" y="' + (H - 4) + '"' + (d.isToday ? ' class="today"' : '') + '>' + esc(dow.charAt(0) + (d.isToday ? '\u2022' : '')) + '</text>';
+    });
+    return out + '</svg>';
+  }
+  window.WES_V17_TEST = { celebrate: celebrate, ms: function () { return CELEB_MS; } };
 
   start();
 })();
