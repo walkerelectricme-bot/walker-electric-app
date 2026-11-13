@@ -57,12 +57,12 @@
   var SLIP_TIMEOUT_MS = 30000;
   var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
   // v1.4 generator service tool
-  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded'];
+  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded', 'receipts'];
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
   var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
   // v1.7 fresh settings: the boot switches this app version knows (a cached boot without one of them is refreshed first)
-  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode'];
+  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder'];
   var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -146,6 +146,9 @@
     this.slipBusy = {};       // cid -> true while that slip is on its way
     this.slipListeners = [];  // fn(event, item, info) for slips finished or refused in the background
     this.bootListeners = [];  // v1.7: fn(boot) when a fresh boot changed the switches (tools, moderator)
+    this.receipts = [];       // v1.9 offline receipt queue
+    this.receiptBusy = {};
+    this.receiptListeners = [];
   }
 
   Engine.prototype.on = function (fn) { this.listeners.push(fn); };
@@ -170,12 +173,14 @@
     if (self.ready) return self.ready;
     self.ready = self.store.open().then(function () {
       return Promise.all([self.store.get('kv', 'meta'), self.store.all('outbox'), self.store.all('problems'),
-        Promise.resolve().then(function () { return self.store.all('slips'); }).catch(function () { return []; })]);
+        Promise.resolve().then(function () { return self.store.all('slips'); }).catch(function () { return []; }),
+        Promise.resolve().then(function () { return self.store.all('receipts'); }).catch(function () { return []; })]);
     }).then(function (r) {
       if (r[0]) self.meta = Object.assign(self.meta, r[0]);
       if (!self.meta.deviceId) self.meta.deviceId = uuid();
       self.outbox = r[1] || []; self.problems = r[2] || [];
       self.slips = (r[3] || []).sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+      self.receipts = (r[4] || []).sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
       return Promise.all(KV_KEYS.map(function (k) {
         return self.store.get('kv', k).then(function (v) { if (v !== undefined) self.kv[k] = v; });
       }));
@@ -203,7 +208,7 @@
   Engine.prototype.pendingCount = function () { return this.myOps().length; };
 
   Engine.prototype.status = function () {
-    return statusLine({ online: this.likelyOnline(), pending: this.pendingCount() + this.slipsWaiting().length, problems: this.problems.length,
+    return statusLine({ online: this.likelyOnline(), pending: this.pendingCount() + this.slipsWaiting().length + this.receiptsWaiting().length, problems: this.problems.length,
                         attention: this.slipsAttention().length, lastSync: this.meta.lastSync, now: this.nowMs(), syncing: !!this.syncing });
   };
 
@@ -450,6 +455,7 @@
     self.syncing = self.init().then(function () { return self.syncLoop(opts, 0); })
       .catch(function () { loopFailed = true; })
       .then(function () { return self.flushSlips(opts); }) // v1.3: slips waiting in the slip queue (never rejects)
+      .then(function () { return self.flushReceipts(opts); }) // v1.9: queued receipt photos (never rejects)
       .then(function () {
         if (loopFailed) return;
         var due = opts.full || !self.meta.lastFull || self.nowMs() - self.meta.lastFull > FULL_EVERY_MS;
@@ -521,6 +527,7 @@
       if (s.gen) w.push(self.genStore(s.gen)); // v1.4 generator service tool (stops, search, not serviced this year with no signal)
       if (s.timeoff) w.push(self.setKv('timeoff', { at: at, data: s.timeoff })); // v1.8 my time-off requests + used days
       if (s.slipsNeeded) w.push(self.setKv('slipsNeeded', { at: at, data: s.slipsNeeded })); // v1.8 Slips Needed Home card
+      if (s.receipts) w.push(self.setKv('receipts', { at: at, data: s.receipts })); // v1.9 receipt jobs + my/all list
       self.meta.lastFull = at; self.meta.lastSync = at;
       if (s.boot) self.meta.bootFor = self.version; // v1.7: this app version has seen a fresh boot
       w.push(self.saveMeta());
@@ -546,7 +553,7 @@
   Engine.prototype.staleAll = function () {
     var self = this, r = self.reads();
     Object.keys(r).forEach(function (k) { r[k].at = 0; });
-    ['jobs', 'odds', 'finish', 'points', 'mats', 'slipsNeeded'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
+    ['jobs', 'odds', 'finish', 'points', 'mats', 'slipsNeeded', 'receipts'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
   };
 
   /** cached: {at, data} or null. A fresh copy (or no signal) -> the copy; else the server, falling back to the copy. */
@@ -1216,7 +1223,178 @@
     });
   };
 
-  /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
+
+  /* ---------------- v1.9 queued receipts ---------------- */
+
+  var RECEIPT_MAX_QUEUED_ = 12;
+  var RECEIPT_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to Doug by itself when you have signal.';
+  var RECEIPT_QUOTA_MSG = 'This phone is out of space for queued photos. Open the app with signal so waiting slips and receipts can sync, then try again. Nothing was sent.';
+  var RECEIPT_TIMEOUT_MS = 60000;
+
+  function isQuotaErr(e) {
+    var n = String((e && e.name) || ''), m = String((e && e.message) || e || '');
+    return n === 'QuotaExceededError' || /quota| QuotaExceeded|the quota has been exceeded|exceeded the quota|SQLite: Error 13/i.test(m);
+  }
+
+  Engine.prototype.myReceipts = function () { var o = this.owner; return this.receipts.filter(function (x) { return x.owner === o; }); };
+  Engine.prototype.receiptsWaiting = function () { return this.myReceipts().filter(function (r) { return r.status !== 'attention'; }); };
+  Engine.prototype.receiptsAttention = function () { return this.myReceipts().filter(function (r) { return r.status === 'attention'; }); };
+  Engine.prototype.onReceipt = function (fn) { this.receiptListeners.push(fn); };
+  Engine.prototype.receiptEmit = function (ev, it, info) {
+    this.receiptListeners.forEach(function (f) { try { f(ev, it, info); } catch (e) {} });
+  };
+  Engine.prototype.receiptSave = function (it) {
+    var self = this;
+    self.receipts = self.receipts.filter(function (x) { return x.cid !== it.cid; }).concat([it]);
+    return self.store.put('receipts', clone(it)).catch(function (e) {
+      if (isQuotaErr(e)) throw err(RECEIPT_QUOTA_MSG, 'QUOTA');
+      throw e;
+    });
+  };
+  Engine.prototype.receiptDrop = function (cid) {
+    var self = this;
+    self.receipts = self.receipts.filter(function (x) { return x.cid !== cid; });
+    return self.store.del('receipts', cid).catch(function () {});
+  };
+
+  /**
+   * A receipt from the form. Saved on the phone FIRST, then sent when there is signal. clientReceiptId makes a retry
+   * after a lost reply return the first result and never a second Drive file or email.
+   */
+  Engine.prototype.queueReceipt = function (input) {
+    var self = this;
+    input = clone(input || {});
+    if (self.myReceipts().filter(function (r) { return r.status !== 'attention'; }).length >= RECEIPT_MAX_QUEUED_) {
+      return Promise.reject(err('This phone already has ' + RECEIPT_MAX_QUEUED_ + ' receipts waiting to sync. Open the app with signal so they can go up, then try again.'));
+    }
+    var d = self.clock(), cid = input.clientReceiptId && /^[A-Za-z0-9_-]{8,64}$/.test(String(input.clientReceiptId)) ? String(input.clientReceiptId) : uuid();
+    input.clientReceiptId = cid;
+    input.clientApp = self.version;
+    input.phoneTime = d.toISOString();
+    if (!input.takenAt) input.takenAt = localDs(d) + ' ' + localHm(d);
+    var it = { cid: cid, seq: ++self.meta.seq, owner: self.owner, input: input, status: 'pending', attempts: 0, nextAt: 0,
+               lastError: '', lastTryAt: 0, createdAt: d.getTime(), updatedAt: d.getTime(), result: null };
+    return self.receiptSave(it).then(function () {
+      return self.saveMeta();
+    }, function (e) {
+      self.receipts = self.receipts.filter(function (x) { return x.cid !== cid; });
+      if (e && e.code === 'QUOTA') throw e;
+      if (isQuotaErr(e)) throw err(RECEIPT_QUOTA_MSG, 'QUOTA');
+      throw err('This phone could not save the receipt (' + (e && e.message || e) + '). Nothing was sent. Try again when you have signal, or write it down.');
+    }).then(function () {
+      self.emit();
+      if (!self.isOnline() || self.denied) {
+        var vol = !!(self.store && (self.store.volatile || (typeof self.store.isVolatile === 'function' && self.store.isVolatile())));
+        return { ok: true, queued: true, cid: cid, message: RECEIPT_QUEUED_MSG + (vol ? ' This phone can\'t keep it if the app is closed (private browsing?): keep the app open until it syncs.' : ''), volatile: vol };
+      }
+      return self.sendReceipt(it, { immediate: true }).then(function (o) {
+        if (o.state === 'done') return o.result;
+        if (o.state === 'rejected') throw err(o.message);
+        var vol = !!(self.store && self.store.volatile);
+        return { ok: true, queued: true, cid: cid, message: RECEIPT_QUEUED_MSG, volatile: vol };
+      });
+    });
+  };
+
+  Engine.prototype.sendReceipt = function (it, o) {
+    var self = this;
+    o = o || {};
+    if (self.receiptBusy[it.cid]) return Promise.resolve({ state: 'retry', message: 'Already on its way.' });
+    self.receiptBusy[it.cid] = true;
+    it.lastTryAt = self.nowMs();
+    self.emit();
+    return self.rcall('apiReceiptSubmit', [it.input], RECEIPT_TIMEOUT_MS).then(function (r) {
+      it.result = r;
+      return self.receiptDrop(it.cid).then(function () {
+        self.staleAll();
+        if (!o.immediate) self.receiptEmit('done', clone(it), { result: r });
+        return { state: 'done', result: r };
+      });
+    }, function (e) {
+      var kind = slipFailKind(e), msg = String((e && e.message) || e || 'Not sent.');
+      it.attempts = (it.attempts || 0) + 1;
+      it.lastError = msg;
+      if (kind === 'retry') {
+        it.status = 'pending';
+        it.nextAt = self.nowMs() + slipBackoff(it.attempts);
+        return self.receiptSave(it).then(function () { return { state: 'retry', message: msg }; });
+      }
+      if (kind === 'rejected' && o.immediate) {
+        return self.receiptDrop(it.cid).then(function () { return { state: 'rejected', message: msg }; });
+      }
+      it.status = 'attention';
+      it.nextAt = 0;
+      return self.receiptSave(it).then(function () {
+        if (!o.immediate) self.receiptEmit('attention', clone(it), { message: it.lastError });
+        return { state: kind, message: it.lastError };
+      });
+    }).then(function (out) {
+      delete self.receiptBusy[it.cid];
+      self.emit();
+      return out;
+    }, function (e) {
+      delete self.receiptBusy[it.cid];
+      self.emit();
+      return { state: 'retry', message: String((e && e.message) || e) };
+    });
+  };
+
+  Engine.prototype.flushReceipts = function (opts) {
+    var self = this;
+    opts = opts || {};
+    if (!self.key || self.denied || !self.isOnline()) return Promise.resolve();
+    var now = self.nowMs();
+    var due = self.receiptsWaiting().filter(function (r) { return !self.receiptBusy[r.cid] && (opts.force || (r.nextAt || 0) <= now); });
+    var run = Promise.resolve();
+    due.forEach(function (it) {
+      run = run.then(function () { return self.sendReceipt(it, { immediate: false }); });
+    });
+    return run.catch(function () {});
+  };
+
+  Engine.prototype.receiptsList = function () {
+    var self = this;
+    var cached = self.kv.receipts ? { at: self.kv.receipts.at, data: (self.kv.receipts.data && self.kv.receipts.data.list) || self.kv.receipts.data } : null;
+    var local = self.myReceipts().map(function (r) {
+      return { id: 'q:' + r.cid, queued: true, status: r.status, lastError: r.lastError, description: r.input && r.input.description,
+               job: r.input && r.input.job, amount: r.input && r.input.amount, takenAt: r.input && r.input.takenAt, mine: true, canView: true };
+    });
+    function merge(d) {
+      d = clone(d) || { ok: true, receipts: [], all: false };
+      d.receipts = local.concat(d.receipts || []);
+      return d;
+    }
+    if (cached && cached.data && (self.nowMs() - cached.at < READ_FRESH_MS || !self.likelyOnline())) return Promise.resolve(merge(cached.data));
+    if (!self.likelyOnline()) {
+      return Promise.resolve(merge({ ok: true, receipts: [], all: false, mode: (self.kv.boot && self.kv.boot.receiptsMode) || 'off',
+        message: 'No signal. Receipts already on the server show here once this phone has opened Receipt with signal.' }));
+    }
+    return self.read('apiReceiptList', [], cached, function (d) {
+      var wrap = self.kv.receipts && self.kv.receipts.data ? Object.assign({}, self.kv.receipts.data, { list: d }) : { list: d };
+      self.setKv('receipts', { at: self.nowMs(), data: wrap });
+    }).then(function (d) { return merge(d); }, function (e) {
+      if (cached && cached.data) return merge(cached.data);
+      throw e;
+    });
+  };
+
+  Engine.prototype.receiptsJobs = function () {
+    var self = this;
+    var snap = self.kv.receipts && self.kv.receipts.data && self.kv.receipts.data.jobs;
+    var cached = snap ? { at: self.kv.receipts.at, data: snap } : null;
+    if (cached && (self.nowMs() - cached.at < READ_FRESH_MS || !self.likelyOnline())) return Promise.resolve(clone(cached.data));
+    if (!self.likelyOnline()) {
+      return Promise.resolve(cached && cached.data ? clone(cached.data) : { today: [], slipsNeeded: [], recent: [],
+        message: 'No signal. Job suggestions show here once this phone has opened Receipt with signal.' });
+    }
+    return self.read('apiReceiptJobs', [], cached, function (d) {
+      var wrap = self.kv.receipts && self.kv.receipts.data ? Object.assign({}, self.kv.receipts.data, { jobs: d }) : { jobs: d };
+      self.setKv('receipts', { at: self.nowMs(), data: wrap });
+    });
+  };
+
+
+    /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
   Engine.prototype.handle = function (fn, args) {
     var self = this;
     args = Array.prototype.slice.call(args || []);
@@ -1302,6 +1480,11 @@
           });
         case 'apiTimeOffSubmit': return self.timeOffSubmit(args[0]);
         case 'apiTimeOffCancel': return self.timeOffCancel(args[0]);
+        // v1.9 receipts: submit is queued (clientReceiptId); list / jobs use the phone's copy when there is no signal
+        case 'apiReceiptSubmit': return self.queueReceipt(args[0]);
+        case 'apiReceiptList': return self.receiptsList();
+        case 'apiReceiptJobs': return self.receiptsJobs();
+        case 'apiReceiptImage': return self.passthrough(fn, args);
         default: return self.passthrough(fn, args);
       }
     });

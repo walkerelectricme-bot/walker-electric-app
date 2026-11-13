@@ -1125,6 +1125,8 @@
     genSyncTool(); // v1.4 gen-hook
     vehSyncTool(); // v1.6 veh-hook
     custSyncTool(); // v1.6 cust-hook
+    recSyncTool(); // v1.9 rec-hook
+    orderTools(); // v1.9 rec-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
       '<p class="muted small" style="margin-top:12px">The Generator Service app opens in a new tab and is still a separate app for now.</p>';
@@ -1136,6 +1138,8 @@
     genSyncTool(); // v1.4 gen-hook
     vehSyncTool(); // v1.6 veh-hook
     custSyncTool(); // v1.6 cust-hook
+    recSyncTool(); // v1.9 rec-hook
+    orderTools(); // v1.9 rec-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
     if (t.action.type === 'link') { go('#tools'); return; }
@@ -4444,7 +4448,7 @@
   }
 
   /** Fresh switches from the server (phone app): keep S.boot in step and redraw Tools / Home / More when they changed. */
-  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode'];
+  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder'];
   function bootView(b) {
     var u = b.user || {};
     return JSON.stringify([BOOT_SWITCHES.map(function (k) { return b[k] === undefined ? null : b[k]; }), !!u.isModerator, u.role, u.name, u.tier]);
@@ -4509,13 +4513,13 @@
   function celebrate(kind, queued) {
     v17Css();
     var old = document.getElementById('celebrate'); if (old) old.parentNode.removeChild(old);
-    var line = queued ? 'Saved, will sync when you have signal' : kind === 'slip' ? 'Slip sent' : 'Time saved';
+    var line = queued ? 'Saved, will sync when you have signal' : kind === 'slip' ? 'Slip sent' : kind === 'receipt' ? 'Receipt sent' : 'Time saved';
     var el = document.createElement('div');
     el.id = 'celebrate'; el.className = (queued ? 'q' : 'ok') + (reducedMotion() ? ' still' : '');
     el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
     el.innerHTML = '<div class="cb">' + (kind === 'slip' && !queued ? '<span class="ci" aria-hidden="true">&#127881;</span>' :
       '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30"></circle><path d="M19 33 l9 9 l17 -19"></path></svg>') +
-      '<div class="ct" id="celebrateText">' + esc(line) + '</div>' + (queued ? '<div class="cs">' + (kind === 'slip' ? 'Slip' : 'Time') + ' is safe on this phone.</div>' : '') + '</div>';
+      '<div class="ct" id="celebrateText">' + esc(line) + '</div>' + (queued ? '<div class="cs">' + (kind === 'slip' ? 'Slip' : kind === 'receipt' ? 'Receipt' : 'Time') + ' is safe on this phone.</div>' : '') + '</div>';
     document.body.appendChild(el);
     var gone = false;
     var close = function () {
@@ -4890,6 +4894,231 @@
         }).join('') : '<p class="muted">No history.</p>') + '</div>';
       }).catch(fail);
     };
+  }
+
+
+  /* ================= Receipt scanner + Tools order (v1.9) =================
+   * Tools > Receipt (RECEIPTS_MODE off / mods / on). The tech takes a photo (camera or gallery), the phone
+   * shrinks it (about 1600 px, JPEG 0.7), and they add a required description, an optional job (today /
+   * slips needed / recent, or free text) and an optional amount. The timestamp is set automatically. Submit
+   * is saved on the phone first (clientReceiptId) and sent once. Quota errors are shown clearly.
+   * Tools tiles are sorted by S.boot.toolsOrder (Settings TOOLS_ORDER). Hooks end in "// v1.9 rec-hook".
+   */
+  ICONS.receipt = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10v18l-2-1-2 1-2-1-2 1-2-1z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>';
+  var TOOLS_ORDER_DEFAULT = ['receipt', 'customers', 'generators', 'pending', 'odds', 'finish', 'gallery', 'workorders', 'vehicles', 'materials'];
+  function receiptsOn() { return !!(S.boot && S.boot.receiptsMode && S.boot.receiptsMode !== 'off'); }
+  var REC_TOOL = { id: 'receipt', title: 'Receipt', subtitle: 'Photograph a receipt and send it to the office', icon: 'receipt',
+    action: { type: 'page', render: function (a) { renderReceipt(a); } } };
+  function recSyncTool() {
+    var on = receiptsOn(), i = -1;
+    TOOLS.forEach(function (t, n) { if (t.id === 'receipt') i = n; });
+    if (on && i < 0) TOOLS.push(REC_TOOL);
+    if (!on && i >= 0) TOOLS.splice(i, 1);
+  }
+  function orderTools() {
+    var raw = (S.boot && S.boot.toolsOrder) || [];
+    var ids = Array.isArray(raw) ? raw.slice() : String(raw).split(/[\s,;]+/).filter(String);
+    if (!ids.length) ids = TOOLS_ORDER_DEFAULT.slice();
+    var rank = {};
+    ids.forEach(function (id, i) { rank[String(id).toLowerCase()] = i; });
+    TOOLS.sort(function (a, b) {
+      var ia = rank[a.id], ib = rank[b.id];
+      if (ia === undefined && ib === undefined) return 0;
+      if (ia === undefined) return 1;
+      if (ib === undefined) return -1;
+      return ia - ib;
+    });
+  }
+
+  function recPad(n) { return (n < 10 ? '0' : '') + n; }
+  function recNowStamp() {
+    var d = (window.WES_TEST_NOW ? window.WES_TEST_NOW() : new Date());
+    return d.getFullYear() + '-' + recPad(d.getMonth() + 1) + '-' + recPad(d.getDate()) + ' ' + recPad(d.getHours()) + ':' + recPad(d.getMinutes());
+  }
+  function recAmtLabel(a) { return a ? '$' + a : ''; }
+
+  function renderReceipt(sub) {
+    if (!receiptsOn()) { go('#tools'); return; }
+    if (sub && sub.indexOf('new') !== 0 && sub !== 'list') {
+      // sub = receipt id
+      return recOpen(sub);
+    }
+    loading();
+    Promise.all([
+      call('apiReceiptList').catch(function (e) { return { ok: false, receipts: [], message: errMsg(e) }; }),
+      call('apiReceiptJobs').catch(function () { return { today: [], slipsNeeded: [], recent: [] }; })
+    ]).then(function (res) {
+      S.receiptsList = res[0];
+      S.receiptsJobs = res[1];
+      drawReceipt(res[0], res[1]);
+    }).catch(fail);
+  }
+
+  function recJobHits(jobs, q) {
+    jobs = jobs || { today: [], slipsNeeded: [], recent: [] };
+    q = String(q || '').toLowerCase().trim();
+    function filt(list) {
+      return (list || []).filter(function (e) {
+        if (!q) return true;
+        return (e.title || '').toLowerCase().indexOf(q) >= 0 || (e.techLetters || '').toLowerCase().indexOf(q) >= 0 || (e.date || '').indexOf(q) >= 0;
+      });
+    }
+    return { today: filt(jobs.today), slipsNeeded: filt(jobs.slipsNeeded), recent: filt(jobs.recent) };
+  }
+
+  function recSuggestHtml(jobs, q) {
+    var h = recJobHits(jobs, q), html = '', n = 0;
+    function group(label, list) {
+      if (!list.length) return;
+      html += '<div class="muted small" style="margin:8px 0 4px">' + esc(label) + '</div>';
+      list.slice(0, 8).forEach(function (e) {
+        n++;
+        html += '<button type="button" class="line job recjob" data-title="' + esc(e.title) + '" data-id="' + esc(e.id || '') + '" data-date="' + esc(e.date || '') + '">' +
+          '<div class="l"><span class="t">' + esc(e.title) + '</span><span class="s">' +
+          esc(e.date ? longDate(e.date) : '') + (e.techLetters ? ' &#183; ' + esc(e.techLetters) : '') + '</span></div></button>';
+      });
+    }
+    group('Today\'s jobs', h.today);
+    group('Slips needed', h.slipsNeeded);
+    group('Recent jobs', h.recent);
+    if (!n) html += (q ? '<p class="muted small">No matching jobs. You can still use the name you typed.</p>' : '');
+    return html;
+  }
+
+  function recListHtml(L) {
+    if (!L || !L.receipts || !L.receipts.length) return '<p class="muted" id="recEmpty">No receipts yet.</p>';
+    return L.receipts.map(function (r) {
+      var sub = (r.takenAt || '') + (r.job ? ' &#183; ' + esc(r.job) : '') + (r.amount ? ' &#183; $' + esc(r.amount) : '');
+      var badge = r.queued ? (r.status === 'attention' ? '<span class="chip sq-bad">Needs attention</span>' : '<span class="chip sq-wait">Waiting to sync</span>') : '';
+      var href = r.queued ? '#tool/receipt' : '#tool/receipt/' + encodeURIComponent(r.id);
+      return '<a class="line" id="rec-' + esc(r.id) + '" href="' + href + '"><div class="l"><span class="t">' + esc(r.description || 'Receipt') + '</span>' +
+        '<span class="s">' + sub + (L.all && r.name && !r.mine ? ' &#183; ' + esc(r.name) : '') +
+        (r.queued && r.lastError ? ' &#183; ' + esc(r.lastError) : '') + '</span></div><span class="r">' + badge +
+        (r.queued ? '' : '<span class="tap" aria-hidden="true">&#8250;</span>') + '</span></a>';
+    }).join('');
+  }
+
+  function drawReceipt(L, jobs) {
+    var all = !!(L && L.all);
+    app.innerHTML = backLink('#tools', 'Tools') + '<h1>Receipt</h1>' +
+      '<p class="sub">Photograph a receipt and send it to the office. It works without signal.</p>' +
+      '<form id="recForm" class="card" autocomplete="off">' +
+      '<div id="recPreview" class="hidden" style="margin-bottom:8px"><img id="recImg" alt="Receipt preview" style="max-width:100%;border-radius:8px"></div>' +
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<label class="btn">Take photo<input type="file" id="recCam" accept="image/*" capture="environment" class="hidden"></label>' +
+      '<label class="btn">Choose from gallery<input type="file" id="recGal" accept="image/*" class="hidden"></label></div>' +
+      '<p class="muted small" id="recPhotoNote">The photo is shrunk on this phone (about 1600 px). Location data is not kept.</p>' +
+      '<label class="field" for="recDesc">Description (required)</label>' +
+      '<input type="text" id="recDesc" maxlength="300" placeholder="What is this receipt for?">' +
+      '<label class="field" for="recJob">Job (optional)</label>' +
+      '<input type="text" id="recJob" maxlength="120" placeholder="Today\'s jobs, slips needed, recent, or type a name" autocomplete="off">' +
+      '<input type="hidden" id="recEventId" value=""><input type="hidden" id="recEventDate" value="">' +
+      '<div id="recSuggest">' + recSuggestHtml(jobs, '') + '</div>' +
+      '<label class="field" for="recAmt">Amount (optional)</label>' +
+      '<input type="text" id="recAmt" inputmode="decimal" placeholder="$0.00">' +
+      '<p class="muted small">Time: <span id="recWhen">' + esc(recNowStamp()) + '</span> (set automatically)</p>' +
+      '<button type="submit" class="btn primary big" id="recSubmit">Send receipt</button>' +
+      '</form>' +
+      '<div class="card"><div class="card-head"><h3>' + (all ? 'All receipts' : 'My recent receipts') + '</h3></div>' +
+      '<div id="recList">' + recListHtml(L) + '</div>' +
+      (L && L.folderUrl && all ? '<p class="muted small">Drive folder: <a target="_blank" rel="noopener" href="' + esc(L.folderUrl) + '">WES Receipts</a></p>' : '') +
+      '</div>';
+    recWireForm(jobs);
+  }
+
+  var recPhoto = null; // {dataUrl, width, height}
+  function recPickFile(file) {
+    if (!file) return;
+    recPhoto = null;
+    $('#recPhotoNote').textContent = 'Shrinking photo\u2026';
+    compressImage(file, 1600, 0.7).then(function (out) {
+      recPhoto = out;
+      var img = $('#recImg');
+      img.src = out.dataUrl;
+      $('#recPreview').classList.remove('hidden');
+      $('#recPhotoNote').textContent = 'Ready (' + out.width + '\u00d7' + out.height + '). Location data was not kept.';
+    }).catch(function (e) {
+      recPhoto = null;
+      fail(e);
+      $('#recPhotoNote').textContent = 'Could not read that picture. Try another photo.';
+    });
+  }
+  function recWireForm(jobs) {
+    recPhoto = null;
+    $('#recCam').onchange = function () { if (this.files && this.files[0]) recPickFile(this.files[0]); this.value = ''; };
+    $('#recGal').onchange = function () { if (this.files && this.files[0]) recPickFile(this.files[0]); this.value = ''; };
+    function refreshSuggest() {
+      var box = $('#recSuggest'); if (!box) return;
+      box.innerHTML = recSuggestHtml(jobs, $('#recJob').value);
+      recWireSuggest();
+    }
+    function recWireSuggest() {
+      $all('#recSuggest .recjob').forEach(function (b) {
+        b.onclick = function (ev) {
+          ev.preventDefault();
+          $('#recJob').value = b.getAttribute('data-title') || '';
+          $('#recEventId').value = b.getAttribute('data-id') || '';
+          $('#recEventDate').value = b.getAttribute('data-date') || '';
+        };
+      });
+    }
+    recWireSuggest();
+    $('#recJob').oninput = function () {
+      $('#recEventId').value = '';
+      $('#recEventDate').value = '';
+      refreshSuggest();
+    };
+    $('#recForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var desc = ($('#recDesc').value || '').trim();
+      if (desc.length < 3) { toast('Please describe the receipt (what it is for).', 4000); $('#recDesc').focus(); return; }
+      if (!recPhoto || !recPhoto.dataUrl) { toast('Take a photo of the receipt, or pick one from the gallery.'); return; }
+      var input = {
+        description: desc,
+        job: ($('#recJob').value || '').trim(),
+        eventId: $('#recEventId').value,
+        eventDate: $('#recEventDate').value,
+        amount: ($('#recAmt').value || '').trim(),
+        image: recPhoto.dataUrl,
+        width: recPhoto.width,
+        height: recPhoto.height,
+        takenAt: recNowStamp()
+      };
+      var btn = $('#recSubmit'); btn.disabled = true; btn.textContent = 'Sending\u2026';
+      call('apiReceiptSubmit', input).then(function (r) {
+        celebrate('receipt', !!r.queued);
+        var msg = r.queued ? (r.message || 'Saved on this phone. It syncs when you have signal.') :
+          (r.warning ? r.warning : 'Receipt sent to the office.');
+        toast(msg, r.warning || r.queued ? 5000 : 3000);
+        recPhoto = null;
+        renderReceipt();
+      }).catch(function (err) { btn.disabled = false; btn.textContent = 'Send receipt'; fail(err); });
+    };
+  }
+
+  function recOpen(id) {
+    var ready = Promise.resolve();
+    if (!$('#recForm')) {
+      ready = Promise.all([
+        call('apiReceiptList').catch(function (e) { return { ok: false, receipts: [], message: errMsg(e) }; }),
+        call('apiReceiptJobs').catch(function () { return { today: [], slipsNeeded: [], recent: [] }; })
+      ]).then(function (res) {
+        S.receiptsList = res[0];
+        S.receiptsJobs = res[1];
+        drawReceipt(res[0], res[1]);
+      });
+    }
+    ready.then(function () {
+      return call('apiReceiptImage', id);
+    }).then(function (r) {
+      var rec = r.receipt || {};
+      openModal(modalHead(rec.description || 'Receipt') +
+        (rec.takenAt ? '<p class="sub">' + esc(rec.takenAt) + (rec.name ? ' &#183; ' + esc(rec.name) : '') + '</p>' : '') +
+        (rec.job ? '<p>Job: ' + esc(rec.job) + '</p>' : '') +
+        (rec.amount ? '<p>Amount: $' + esc(rec.amount) + '</p>' : '') +
+        '<img alt="Receipt" style="max-width:100%;border-radius:8px" src="' + r.dataUrl + '">' +
+        (rec.fileUrl ? '<p class="muted small"><a target="_blank" rel="noopener" href="' + esc(rec.fileUrl) + '">Open in Drive</a></p>' : ''));
+    }).catch(function (err) { fail(err); go('#tool/receipt'); });
   }
 
   start();

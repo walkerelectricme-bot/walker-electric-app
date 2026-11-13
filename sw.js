@@ -5,7 +5,7 @@
  *  - Data never goes through this cache: calls to the Apps Script data service (POST) go straight to the network, and
  *    the time card, outbox and cached jobs live in IndexedDB (store.js), which updates never touch.
  */
-var VERSION = 'wes-shell-v1.8-53bfeb2c74';
+var VERSION = 'wes-shell-v1.9-24902f14f7';
 var SHELL = ['./', './index.html', './config.js', './manifest.webmanifest', './css/shell.css', './js/timecore.js', './js/store.js',
   './js/remote.js', './js/engine.js', './js/shell.js', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
