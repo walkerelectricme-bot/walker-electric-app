@@ -28,6 +28,8 @@
  *    turned on or off, moderator added or removed), onBoot listeners get the new boot so the page updates Tools / Home
  *    right away (no second reopen). A cached boot missing a key this app version expects (BOOT_KEYS) is refreshed with
  *    a full sync before the first screen, once per app version. v1.7 generator "Edit name / address": needs signal.
+ *  - v1.8 time-off requests (TIMEOFF_MODE on): apiTimeOffSubmit / cancel-pending go through the outbox with a
+ *    clientRequestId (deduped like slips). More > Requests (approve / deny / cancel approved) needs signal.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
  * tapped. Changes go up in batches (apiSync), oldest first; the server is idempotent on the client ID, so a retry after
@@ -55,12 +57,12 @@
   var SLIP_TIMEOUT_MS = 30000;
   var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
   // v1.4 generator service tool
-  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent'];
+  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded'];
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
   var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
   // v1.7 fresh settings: the boot switches this app version knows (a cached boot without one of them is refreshed first)
-  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner'];
+  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode'];
   var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -335,6 +337,9 @@
     var today = self.today(), list = self.entries();
     var e = input.entryId ? findById(list, input.entryId) : null;
     if (input.entryId && !e) return Promise.reject(err('That entry was not found (it may have been deleted). Reload and try again.'));
+    if (e && e.source === 'TimeOff') {
+      return Promise.reject(err('Hours from an approved time-off request can\'t be edited or deleted. Only cancelling the request changes them.'));
+    }
     var v, reason;
     try {
       v = TC.normalizeEntryInput(Object.assign({}, input, { allowOpen: !!input.entryId }), today, t.offDayHours);
@@ -393,6 +398,9 @@
     if (TC.looksSecret(reason)) return Promise.reject(err('The reason can\'t hold access codes or passwords.'));
     var e = findById(list, id);
     if (!e) return Promise.reject(err('That entry was not found (it may already be deleted).'));
+    if (e.source === 'TimeOff') {
+      return Promise.reject(err('Hours from an approved time-off request can\'t be edited or deleted. Only cancelling the request changes them.'));
+    }
     var op = { type: 'delete', ref: refOf(e), entry: { date: e.date, reason: reason } };
     return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
       if (r && r.status === 'rejected') { self.dismissProblem(op.cid); throw err(r.message || 'That entry was not deleted.'); }
@@ -458,7 +466,7 @@
     var ops = self.myOps().slice(0, BATCH);
     if (!ops.length && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
     if (round > 20) return Promise.resolve();
-    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, veh: o.veh, phoneTime: o.phoneTime }; });
+    var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, veh: o.veh, toff: o.toff, phoneTime: o.phoneTime }; });
     return self.rcall('apiSync', [{ appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true }], 30000)
       .then(function (res) {
         var byCid = {}, gone = {}, stop = false, writes = [];
@@ -485,6 +493,7 @@
         });
         self.outbox = self.outbox.filter(function (o) { return !gone[o.cid]; });
         if (res.time) writes.push(self.setKv('time', res.time));
+        if (res.timeoff) writes.push(self.setKv('timeoff', { at: self.nowMs(), data: res.timeoff })); // v1.8
         self.meta.lastSync = self.nowMs();
         writes.push(self.saveMeta());
         return Promise.all(writes).then(function () {
@@ -510,6 +519,8 @@
       if (s.finish) w.push(self.setKv('finish', { at: at, data: s.finish }));
       if (s.mats) w.push(self.setKv('mats', { at: at, data: s.mats })); // v1.2 materials picker list (search works with no signal)
       if (s.gen) w.push(self.genStore(s.gen)); // v1.4 generator service tool (stops, search, not serviced this year with no signal)
+      if (s.timeoff) w.push(self.setKv('timeoff', { at: at, data: s.timeoff })); // v1.8 my time-off requests + used days
+      if (s.slipsNeeded) w.push(self.setKv('slipsNeeded', { at: at, data: s.slipsNeeded })); // v1.8 Slips Needed Home card
       self.meta.lastFull = at; self.meta.lastSync = at;
       if (s.boot) self.meta.bootFor = self.version; // v1.7: this app version has seen a fresh boot
       w.push(self.saveMeta());
@@ -535,7 +546,7 @@
   Engine.prototype.staleAll = function () {
     var self = this, r = self.reads();
     Object.keys(r).forEach(function (k) { r[k].at = 0; });
-    ['jobs', 'odds', 'finish', 'points', 'mats'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
+    ['jobs', 'odds', 'finish', 'points', 'mats', 'slipsNeeded'].forEach(function (k) { if (self.kv[k]) self.kv[k].at = 0; });
   };
 
   /** cached: {at, data} or null. A fresh copy (or no signal) -> the copy; else the server, falling back to the copy. */
@@ -563,6 +574,19 @@
           (j ? TC.dayLabel(j.from) + ' to ' + TC.dayLabel(j.to) : '7 days back to 14 days ahead once it has synced') + '.' });
     }
     return self.read('apiJobs', [ds], cached, function (d) { if (d && d.ok) self.remember('jobs:' + ds, d); });
+  };
+
+  Engine.prototype.slipsNeeded = function () {
+    var self = this, c = self.kv.slipsNeeded, r = self.reads().slipsNeeded;
+    var cached = r || (c ? { at: c.at, data: c.data } : null);
+    if (!cached && !self.likelyOnline()) {
+      return Promise.resolve({ ok: false, enabled: true, mode: (self.kv.boot && self.kv.boot.slipsNeededMode) || 'on',
+        events: [], count: 0, message: 'No signal. Slips needed show here once this phone has opened Home with signal.' });
+    }
+    return self.read('apiSlipsNeeded', [], cached, function (d) {
+      self.remember('slipsNeeded', d);
+      return self.setKv('slipsNeeded', { at: self.nowMs(), data: d });
+    }, 'OFFLINE: No signal. Slips needed show here once this phone has opened Home with signal.');
   };
 
   Engine.prototype.weekStrip = function (refDate) {
@@ -1117,6 +1141,81 @@
     });
   };
 
+  /* ---------------- v1.8 time-off requests ---------------- */
+  var TOFF_QUEUED_MSG = 'Saved on this phone. It goes to Doug when you have signal.';
+  function isToffOp(op) { return /^timeOff/.test(String(op && op.type || '')); }
+  Engine.prototype.timeOffCached = function () {
+    var c = this.kv.timeoff;
+    return c && c.data ? clone(c.data) : { mode: (this.kv.boot && this.kv.boot.timeOffMode) || 'off', year: Number(String(this.today()).slice(0, 4)), used: { sick: 0, vacation: 0 }, requests: [] };
+  };
+  Engine.prototype.timeOffMineLocal = function () {
+    var d = this.timeOffCached(), reqs = (d.requests || []).slice(), seen = {};
+    reqs.forEach(function (r) { if (r.clientRequestId) seen[r.clientRequestId] = true; if (r.id) seen[r.id] = true; });
+    this.outbox.forEach(function (o) {
+      if (o.type === 'timeOffSubmit' && o.toff && !seen[o.cid]) {
+        var t = o.toff;
+        reqs.unshift({ id: '', clientRequestId: o.cid, startDate: t.startDate, endDate: t.endDate || t.startDate,
+          datesLabel: t.startDate === (t.endDate || t.startDate) ? t.startDate : t.startDate + '\u2013' + (t.endDate || t.startDate),
+          type: t.type, note: t.note || '', status: 'Pending', queued: true });
+        seen[o.cid] = true;
+      }
+    });
+    var cancelled = {};
+    this.outbox.forEach(function (o) {
+      if (o.type === 'timeOffCancel' && o.toff) cancelled[o.toff.requestId || o.toff.clientRequestId || o.cid] = true;
+    });
+    reqs.forEach(function (r) {
+      if (r.status === 'Pending' && (cancelled[r.id] || cancelled[r.clientRequestId])) r.status = 'Cancelled';
+    });
+    d.requests = reqs;
+    return d;
+  };
+  Engine.prototype.timeOffSubmit = function (input) {
+    var self = this;
+    input = clone(input || {});
+    if (!input.clientRequestId) input.clientRequestId = uuid();
+    var op = { cid: input.clientRequestId, type: 'timeOffSubmit', toff: {
+      startDate: input.startDate, endDate: input.endDate || input.startDate, type: input.type, note: input.note || '',
+      clientRequestId: input.clientRequestId
+    } };
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid);
+        throw err(r.message || 'That request was not sent.');
+      }
+      if (r && r.status === 'done') {
+        return { ok: true, queued: false, replay: !!(r.request && r.request.id && input.clientRequestId),
+                 request: r.request || { id: r.entryId, status: 'Pending', clientRequestId: op.cid }, emailSent: true };
+      }
+      return { ok: true, queued: true, clientRequestId: op.cid, message: TOFF_QUEUED_MSG,
+               request: { id: '', clientRequestId: op.cid, startDate: op.toff.startDate, endDate: op.toff.endDate,
+                          type: op.toff.type, note: op.toff.note, status: 'Pending', queued: true } };
+    });
+  };
+  Engine.prototype.timeOffCancel = function (id) {
+    var self = this;
+    id = String(id || '');
+    if (!id) return Promise.reject(err('Pick the request first.'));
+    var pendingOp = self.outbox.filter(function (o) { return o.type === 'timeOffSubmit' && (o.cid === id || (o.toff && (o.toff.clientRequestId === id))); })[0];
+    if (pendingOp && !self.results[pendingOp.cid]) {
+      // still waiting to go up: drop it so the server never sees it
+      self.outbox = self.outbox.filter(function (o) { return o.cid !== pendingOp.cid; });
+      return self.store.del('outbox', pendingOp.cid).then(function () {
+        self.emit();
+        return { ok: true, request: { id: '', clientRequestId: pendingOp.cid, status: 'Cancelled' }, queued: false, dropped: true };
+      });
+    }
+    var op = { cid: uuid(), type: 'timeOffCancel', toff: { requestId: id, clientRequestId: id } };
+    return self.enqueue(op).then(function () { return self.settle(op); }).then(function (r) {
+      if (r && r.status === 'rejected') {
+        self.dismissProblem(op.cid);
+        throw err(r.message || 'That request was not cancelled.');
+      }
+      if (r && r.status === 'done') return { ok: true, queued: false, request: r.request || { id: id, status: 'Cancelled' } };
+      return { ok: true, queued: true, message: TOFF_QUEUED_MSG, request: { id: id, status: 'Cancelled' } };
+    });
+  };
+
   /** The one entry point: args are exactly what the page passes to google.script.run (key first). */
   Engine.prototype.handle = function (fn, args) {
     var self = this;
@@ -1146,6 +1245,7 @@
         }
         case 'apiEntryHistory': return self.history(args[0]);
         case 'apiJobs': return self.jobsFor(TC.normDate(args[0]) || self.today());
+        case 'apiSlipsNeeded': return self.slipsNeeded();
         case 'apiJobDetail': {
           var k = 'job:' + args[0] + '|' + (args[1] || '');
           return self.read(fn, args, self.reads()[k], function (d) { self.remember(k, d); },
@@ -1192,6 +1292,16 @@
         case 'apiVehAddMiles': return self.vehQueue('vehMiles', args[0]);
         // v1.6 customer list: online only, never remembered on the phone, never marks anything stale
         case 'apiCustSearch': case 'apiCustDetail': return self.custCall(fn, args);
+        // v1.8 time-off requests: submit / cancel pending can be queued; list / decide need signal
+        case 'apiTimeOffMine': return self.read(fn, args, self.kv.timeoff || null,
+          function (d) { return self.setKv('timeoff', { at: self.nowMs(), data: d }); },
+          'OFFLINE: No signal. Your requests show here once this phone has opened Time off with signal.')
+          .then(function () { return self.timeOffMineLocal(); }, function (e) {
+            if (String(e.code || e.message || '').indexOf('OFFLINE') >= 0) return self.timeOffMineLocal();
+            throw e;
+          });
+        case 'apiTimeOffSubmit': return self.timeOffSubmit(args[0]);
+        case 'apiTimeOffCancel': return self.timeOffCancel(args[0]);
         default: return self.passthrough(fn, args);
       }
     });

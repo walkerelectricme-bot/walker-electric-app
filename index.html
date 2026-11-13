@@ -644,6 +644,7 @@
     setTab(tab);
     if (page.indexOf('mod-') === 0 && !isMod()) { go('#home'); return; }
     if (page === 'mod-mods') return renderModMods(); // v1.7 mods-hook
+    if (page === 'mod-requests') return renderModRequests(); // v1.8 to-hook
     switch (page) {
       case 'home': return renderHome();
       case 'log': return renderLog(p[1], p[2]);
@@ -739,6 +740,7 @@
     loadJobs(S.homeDay);
     loadWeekStrip();
     homeV17(); // v1.7 ui-hook
+    slipsNeededHome(); // v1.8 sn-hook
     // fresh numbers (a crew mate's slip may have earned me a point); my own only
     if (S.points) call('apiPoints').then(function (p) { S.points = p; drawPill(); if ($('#streakRisk')) drawRisk(); }).catch(function () {});
   }
@@ -1076,6 +1078,7 @@
         celebrate('slip', false); // v1.7 ui-hook
         toast(msg, 5000);
         if ($('#jobs')) loadJobs(S.homeDay);
+        if ($('#slipsNeeded')) loadSlipsNeeded(); // v1.8 sn-hook
       }).catch(function (err) { btn.disabled = false; btn.textContent = 'Submit slip'; fail(err); });
     };
     matPicker(e, detail, odd); // v1.2 mat-hook
@@ -1787,6 +1790,7 @@
       '<a class="drill" id="drillOff" href="#timeoff"><span>Time off</span><span class="val">' + esc(offSum) + '</span></a>' +
       (to.flagged.length ? '<div class="note warn">' + days(to.flagged.length) + ' logged past your allotment this year. Doug and Duane can see it.</div>' : '') +
       '<p class="muted small">Every change you save is kept with a reason. The app never records your location.</p>';
+    timeOffTimeCard(); // v1.8 to-hook
   }
 
   /** My week, or (moderators) someone else's week: #week/<date>/<email> */
@@ -1822,6 +1826,7 @@
   }
 
   function renderTimeOff() {
+    if (timeOffRequestRoute()) return; // v1.8 to-hook
     var to = S.tc.timeOff;
     app.innerHTML = '<h1>Time off</h1><p class="sub">' + to.year + ' so far</p>' +
       '<div class="card">' + offLine('Sick days', to.sick) + offLine('Vacation days', to.vacation) + offLine('Holidays', to.holiday) + '</div>' +
@@ -1831,6 +1836,7 @@
       }).join('') : '<p class="muted">None this year.</p>') + '</div>' +
       '<p class="muted small">Read-only. Doug or Duane set allotments. If you log Sick or Vacation with none left, the app warns you, ' +
       'still saves it, and flags it for them.</p><a class="btn block" href="#time">Back to Time card</a>';
+    timeOffMinePanel(); // v1.8 to-hook
   }
 
   /* ================= Log time: the day (v0.9 blocks) and one block (create / edit) ================= */
@@ -1944,6 +1950,7 @@
       (others.length ? '<a class="btn block" href="#log/' + esc(date) + base + '">Back to the day</a>'
                      : '<p class="muted small" style="margin-top:12px">Split day? Save this block, then add the next one. The day total adds them up.</p>');
 
+    if (e && e.source === 'TimeOff') { lockTimeOffForm(date, e, email, tc, day); return; } // v1.8 to-hook
     var typeBtns = $all('#fType button');
     function curType() { var b = $('#fType button.on'); return b ? b.getAttribute('data-t') : F.dayType; }
     function remainingFor(type) {
@@ -2041,6 +2048,7 @@
       '<p class="muted small ver" id="moreVer">' + esc(S.boot.app.name) + ' ' + esc(S.boot.app.version) + '</p>';
     slipQMoreLink(); // v1.3 slipq-hook
     modsMoreLink(); // v1.7 mods-hook
+    timeOffMoreLink(); // v1.8 to-hook
     $('#forget').onclick = function () {
       if (!window.confirm('Sign out on this phone? You will need the link from your invite email to get back in.')) return;
       lsDel('key'); S.key = ''; S.boot = null; denied('NOT_INVITED: Signed out on this phone.');
@@ -2316,6 +2324,7 @@
       if (editCid) go('#tool/pending');
       else if (odd) go('#tool/odds/' + odd.id);
       else if ($('#jobs')) loadJobs(S.homeDay);
+      if ($('#slipsNeeded')) loadSlipsNeeded(); // v1.8 sn-hook
     }).catch(function (err) { reset(); fail(err); });
   }
 
@@ -2446,6 +2455,7 @@
     sqSig = sig;
     if ($('#sqList') && !$('#sqList .sqconfirm:not(.hidden)') && !$('#sqList button[disabled]')) renderPending();
     if ($('#jobs')) slipQMarkJobs($('#jobs'));
+    if ($('#slipsNeeded')) slipsNeededMark($('#slipsNeeded')); // v1.8 sn-hook
     if ($('#drillPending') && location.hash === '#more') { var d = $('#drillPending'); d.parentNode.removeChild(d); slipQMoreLink(); }
   }
   if (slipQOn()) {
@@ -2456,6 +2466,7 @@
         toast(it.slipShown ? 'Finish list synced for ' + sqTitle(it) + '.' + sqFinishText(r.finish)
           : 'Slip synced: ' + sqTitle(it) + (it.input && it.input.date ? ' (' + longDate(it.input.date) + ')' : '') + ' is on the WES calendar.' + sqFinishText(r.finish), 6000);
         if ($('#jobs') && S.boot) loadJobs(S.homeDay);
+        if ($('#slipsNeeded')) loadSlipsNeeded(); // v1.8 sn-hook
       } else if (ev === 'attention') {
         toast('Slip for ' + sqTitle(it) + ' needs attention: ' + (info && info.message || 'the office refused it') + ' (Tools > Slips waiting to sync)', 9000);
       }
@@ -4433,7 +4444,7 @@
   }
 
   /** Fresh switches from the server (phone app): keep S.boot in step and redraw Tools / Home / More when they changed. */
-  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner'];
+  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode'];
   function bootView(b) {
     var u = b.user || {};
     return JSON.stringify([BOOT_SWITCHES.map(function (k) { return b[k] === undefined ? null : b[k]; }), !!u.isModerator, u.role, u.name, u.tier]);
@@ -4449,7 +4460,7 @@
     var page = hashParts()[0] || 'home';
     var typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
     if (modalEl || typing) return true; // never redraw over a popup or something being typed; the next screen has it
-    if (page === 'home' || page === 'tools' || page === 'more' || (page.indexOf('mod-') === 0 && !isMod())) route();
+    if (page === 'home' || page === 'tools' || page === 'more' || page === 'time' || page === 'timeoff' || (page.indexOf('mod-') === 0 && !isMod()) || page === 'mod-requests') route();
     return true;
   }
   if (window.WES_ENGINE && typeof window.WES_ENGINE.onBoot === 'function') {
@@ -4569,6 +4580,317 @@
     return out + '</svg>';
   }
   window.WES_V17_TEST = { celebrate: celebrate, ms: function () { return CELEB_MS; } };
+
+  /* ================= Time-off requests (v1.8) =================
+   * Time section: "Request time off" button (TIMEOFF_MODE on). The tech picks a day or a range, Vacation / Sick /
+   * Unpaid, and an optional note. Their requests and this year's used vacation / sick days show on Time off.
+   * Doug and moderators get a badge and More > Requests, with Approve / Deny (online only) and used totals for
+   * everyone. One-line hooks end in "// v1.8 to-hook". The functions live here (after the points / v1.7 screens,
+   * before start()), so the slip form stays byte-for-byte as before.
+   */
+  function timeOffOn() { return !!(S.boot && S.boot.timeOffMode === 'on'); }
+  function timeOffPendingN() { return Number(S.boot && S.boot.timeOffPending) || 0; }
+  function timeOffMoreLink() {
+    if (!isMod() || !timeOffOn()) return;
+    var a = $('a.drill[href="#mod-timeoff"]') || $('a.drill[href="#mod-users"]');
+    if (!a) return;
+    var n = timeOffPendingN();
+    a.insertAdjacentHTML('afterend', '<a class="drill" id="drillRequests" href="#mod-requests"><span>Requests</span><span class="val" id="reqBadge">' +
+      (n ? n + ' pending' : '') + '</span></a>');
+  }
+  function timeOffTimeCard() {
+    if (!timeOffOn()) return;
+    var a = $('#drillOff');
+    if (!a) return;
+    a.insertAdjacentHTML('afterend', '<a class="btn primary block" id="toffAsk" href="#timeoff/request" style="margin-top:12px">Request time off</a>');
+  }
+  function timeOffMinePanel() {
+    if (!timeOffOn()) return;
+    var back = $('a.btn.block[href="#time"]');
+    var box = document.createElement('div');
+    box.id = 'toffMine';
+    box.innerHTML = '<div class="loading">Loading requests&#x2026;</div>';
+    if (back) app.insertBefore(box, back);
+    else app.appendChild(box);
+    call('apiTimeOffMine').then(function (d) {
+      S.timeOffMine = d;
+      var el = $('#toffMine'); if (!el) return;
+      el.innerHTML = timeOffMineHtml(d);
+      $all('[data-toff-cancel]', el).forEach(function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-toff-cancel');
+          if (!window.confirm('Cancel this pending request?')) return;
+          b.disabled = true;
+          call('apiTimeOffCancel', id).then(function () { toast('Request cancelled.'); renderTimeOff(); }).catch(function (err) { b.disabled = false; fail(err); });
+        };
+      });
+    }).catch(function (err) {
+      var el = $('#toffMine'); if (el) el.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>';
+    });
+  }
+  function timeOffMineHtml(d) {
+    d = d || {};
+    var used = d.used || {};
+    var reqs = d.requests || [];
+    var html = '<div class="card" id="toffUsed"><div class="card-head"><h3>Used this year</h3><span class="muted small">' + esc(String(d.year || '')) + '</span></div>' +
+      '<div class="line"><div class="l"><span class="t">Vacation</span></div><span class="r"><b id="toffVacUsed">' + (used.vacation || 0) + '</b></span></div>' +
+      '<div class="line"><div class="l"><span class="t">Sick</span></div><span class="r"><b id="toffSickUsed">' + (used.sick || 0) + '</b></span></div></div>' +
+      '<a class="btn primary block" id="toffAsk2" href="#timeoff/request">Request time off</a>' +
+      '<div class="card" id="toffReqs"><h3>My requests</h3>';
+    if (!reqs.length) html += '<p class="muted" id="toffNone">None yet.</p>';
+    else html += reqs.map(timeOffReqLine).join('');
+    return html + '</div>';
+  }
+  function timeOffReqLine(r) {
+    var canCancel = r.status === 'Pending';
+    return '<div class="line" data-toff-id="' + esc(r.id) + '"><div class="l"><span class="t">' + esc(r.datesLabel) + '</span>' +
+      '<span class="s">' + esc(r.type) + (r.note ? ' \u00b7 ' + esc(r.note) : '') +
+      (r.decisionNote ? ' \u00b7 ' + esc(r.decisionNote) : '') + '</span></div>' +
+      '<span class="r">' + (canCancel ? '<button class="btn small" data-toff-cancel="' + esc(r.id) + '">Cancel</button> ' : '') +
+      '<span class="chip' + (r.status === 'Approved' ? ' solid' : r.status === 'Denied' ? ' warn' : '') + '">' + esc(r.status) + '</span></span></div>';
+  }
+  function timeOffRequestRoute() {
+    if ((hashParts()[1] || '') !== 'request') return false;
+    if (!timeOffOn()) return false;
+    renderTimeOffForm();
+    return true;
+  }
+  function timeOffTypeBtns(cur) {
+    return ['Vacation', 'Sick', 'Unpaid'].map(function (t) {
+      return '<button type="button" class="btn' + (t === cur ? ' on' : '') + '" data-toff-type="' + t + '">' + t + '</button>';
+    }).join(' ');
+  }
+  function timeOffCountWeekdays(a, b) {
+    if (!a || !b || b < a) return 0;
+    var n = 0, d = new Date(a + 'T12:00:00'), end = new Date(b + 'T12:00:00'), guard = 0;
+    for (; d <= end && guard < 62; d.setDate(d.getDate() + 1), guard++) {
+      var w = d.getDay(); if (w >= 1 && w <= 5) n++;
+    }
+    return n;
+  }
+  function renderTimeOffForm() {
+    var today = (S.boot && S.boot.today) || '';
+    app.innerHTML = backLink('#timeoff', 'Time off') + '<h1>Request time off</h1>' +
+      '<form id="toffForm" class="card" autocomplete="off">' +
+      '<label class="field" for="toffStart">First day</label><input type="date" id="toffStart" required value="' + esc(today) + '">' +
+      '<label class="field" for="toffEnd">Last day</label><input type="date" id="toffEnd" required value="' + esc(today) + '">' +
+      '<p class="field">Type</p><div id="toffTypes" class="row" style="flex-wrap:wrap;gap:8px">' + timeOffTypeBtns('Vacation') + '</div>' +
+      '<p class="muted small" id="toffHint"></p>' +
+      '<label class="field" for="toffNote">Note (optional)</label><textarea id="toffNote" rows="3" maxlength="300"></textarea>' +
+      '<button type="submit" class="btn primary block" id="toffSend">Send request</button></form>' +
+      '<p class="muted small">The request is sent to Doug. Vacation and sick days are posted as 8 hours (7:30\u20133:30) on each weekday after he approves. Unpaid posts no hours. A blue calendar event is added only after approval.</p>';
+    var type = 'Vacation';
+    function curType() { return type; }
+    function hint() {
+      var a = $('#toffStart').value, b = $('#toffEnd').value, n = timeOffCountWeekdays(a, b), t = curType();
+      var el = $('#toffHint'); if (!el) return;
+      if (!a || !b) { el.textContent = ''; return; }
+      if (b < a) { el.textContent = 'The last day can\'t be before the first day.'; return; }
+      if (t === 'Unpaid') el.textContent = n ? (n + (n === 1 ? ' weekday' : ' weekdays') + '. Unpaid posts no hours.') : 'No weekdays in that range. A calendar event is still added if approved.';
+      else el.textContent = n ? (n + (n === 1 ? ' weekday' : ' weekdays') + ' \u00d7 8 hours (7:30\u20133:30) after approval.') : 'Vacation and Sick requests have to include a weekday. Saturday and Sunday aren\'t work days.';
+    }
+    $all('#toffTypes button').forEach(function (b) {
+      b.onclick = function () {
+        type = b.getAttribute('data-toff-type');
+        $all('#toffTypes button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        hint();
+      };
+    });
+    ['toffStart', 'toffEnd'].forEach(function (id) { $('#' + id).addEventListener('change', hint); $('#' + id).addEventListener('input', hint); });
+    hint();
+    $('#toffForm').onsubmit = function (ev) {
+      ev.preventDefault();
+      var start = $('#toffStart').value, end = $('#toffEnd').value, t = curType(), note = $('#toffNote').value;
+      if (!start) { toast('Pick a first day.'); return; }
+      if (end && end < start) { toast('The last day can\'t be before the first day.'); return; }
+      var btn = $('#toffSend'); btn.disabled = true;
+      call('apiTimeOffSubmit', { startDate: start, endDate: end || start, type: t, note: note }).then(function (r) {
+        var q = !!(r && r.queued);
+        toast(q ? 'Saved on this phone. It goes to Doug when you have signal.' : 'Request sent to Doug.', 4000);
+        go('#timeoff');
+      }).catch(function (err) { btn.disabled = false; fail(err); });
+    };
+  }
+  function renderModRequests() {
+    if (!isMod()) { go('#more'); return; }
+    loading();
+    call('apiTimeOffList').then(function (d) {
+      S.timeOffList = d;
+      if (S.boot) S.boot.timeOffPending = d.pendingCount || 0;
+      var pending = d.pending || [], recent = d.recent || [], used = (d.used && d.used.people) || [];
+      var html = backLink('#more', 'More') + '<h1>Requests</h1>' +
+        (d.mode !== 'on' ? '<div class="note warn">TIMEOFF_MODE is off. New requests are refused until you turn it on in Settings.</div>' : '') +
+        '<div class="card" id="toffPending"><div class="card-head"><h3>Pending</h3><span class="muted small" id="toffPendN">' +
+        (pending.length ? pending.length : 'None') + '</span></div>';
+      if (!pending.length) html += '<p class="muted">No requests waiting.</p>';
+      else html += pending.map(function (r) {
+        return '<div class="card" style="margin:8px 0" data-toff-req="' + esc(r.id) + '">' +
+          '<div class="line"><div class="l"><span class="t">' + esc(r.first || r.name) + ' \u2013 ' + esc(r.type) + '</span>' +
+          '<span class="s">' + esc(r.datesLabel) + (r.weekdays ? ' \u00b7 ' + r.weekdays + (r.weekdays === 1 ? ' weekday' : ' weekdays') : '') +
+          (r.note ? ' \u00b7 ' + esc(r.note) : '') + '</span></div></div>' +
+          '<label class="field" for="toffNote-' + esc(r.id) + '">Note (optional)</label>' +
+          '<input type="text" id="toffNote-' + esc(r.id) + '" maxlength="300">' +
+          '<div class="row" style="gap:8px;margin-top:8px">' +
+          '<button class="btn primary" data-toff-act="approve" data-toff-id="' + esc(r.id) + '">Approve</button>' +
+          '<button class="btn" data-toff-act="deny" data-toff-id="' + esc(r.id) + '">Deny</button></div></div>';
+      }).join('');
+      html += '</div><div class="card" id="toffUsedAll"><div class="card-head"><h3>Days used this year</h3><span class="muted small">' +
+        esc(String(d.year || '')) + '</span></div>';
+      if (!used.length) html += '<p class="muted">No one has vacation or sick days logged yet.</p>';
+      else html += used.filter(function (p) { return p.active || p.vacation || p.sick; }).map(function (p) {
+        return '<div class="line"><div class="l"><span class="t">' + esc(p.name) + '</span></div>' +
+          '<span class="r">Vac ' + (p.vacation || 0) + ' \u00b7 Sick ' + (p.sick || 0) + '</span></div>';
+      }).join('');
+      html += '</div><div class="card" id="toffRecent"><h3>Recent</h3>';
+      if (!recent.length) html += '<p class="muted">None yet.</p>';
+      else html += recent.map(function (r) {
+        var canUndo = r.status === 'Approved';
+        return '<div class="line" data-toff-id="' + esc(r.id) + '"><div class="l"><span class="t">' + esc(r.first || r.name) + ' \u2013 ' + esc(r.type) + '</span>' +
+          '<span class="s">' + esc(r.datesLabel) + (r.decisionNote ? ' \u00b7 ' + esc(r.decisionNote) : '') + '</span></div>' +
+          '<span class="r">' + (canUndo ? '<button class="btn small" data-toff-act="cancel" data-toff-id="' + esc(r.id) + '">Cancel</button> ' : '') +
+          '<span class="chip' + (r.status === 'Approved' ? ' solid' : r.status === 'Denied' ? ' warn' : '') + '">' + esc(r.status) + '</span></span></div>';
+      }).join('');
+      html += '</div><p class="muted small">Approving adds a blue (Peacock) calendar event and, for Vacation or Sick, posts 8 hours (7:30\u20133:30) on each weekday. Cancelling an approved request removes hours and the calendar event for today and future days only; past days stay. Needs signal.</p>';
+      app.innerHTML = html;
+      $all('[data-toff-act]').forEach(function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-toff-id'), act = b.getAttribute('data-toff-act');
+          var noteEl = $('#toffNote-' + id);
+          var note = noteEl ? noteEl.value : '';
+          var who = (d.pending.concat(d.recent).filter(function (x) { return x.id === id; })[0] || {});
+          var label = (who.first || who.name || 'this request');
+          var msg = act === 'approve' ? 'Approve ' + label + '\'s ' + (who.type || '') + ' request for ' + (who.datesLabel || '') + '?'
+            : act === 'deny' ? 'Deny ' + label + '\'s request?'
+            : 'Cancel this approved request? Hours and the calendar event for today and future days will be removed. Past days stay.';
+          if (!window.confirm(msg)) return;
+          b.disabled = true;
+          call('apiTimeOffDecide', id, act, note).then(function () {
+            toast(act === 'approve' ? 'Approved.' : act === 'deny' ? 'Denied.' : 'Cancelled.');
+            renderModRequests();
+          }).catch(function (err) { b.disabled = false; fail(err); });
+        };
+      });
+    }).catch(fail);
+  }
+  window.WES_V18_TEST = { on: timeOffOn, mineHtml: timeOffMineHtml, weekdays: timeOffCountWeekdays };
+
+
+  /* ================= Slips Needed Home card (v1.8) =================
+   * Sits directly under Today's jobs. Lists Tomato (colorId 11) WES job events from
+   * SLIPS_NEEDED_DAYS back through today. Same visibility as Today's jobs (everyone sees
+   * all of them). Tapping a row opens the same job popup / Make slip flow. After a slip
+   * the job event is not recolored (existing slip contract); the card keeps it listed
+   * and greys it as "Slip sent" until the office changes the calendar color.
+   * One-line hooks end in "// v1.8 sn-hook".
+   */
+  function slipsNeededOn() { return S.boot && S.boot.slipsNeededMode !== 'off'; }
+  function slipsNeededCss() {
+    if (document.getElementById('sn18css')) return;
+    var st = document.createElement('style'); st.id = 'sn18css';
+    st.textContent = '#slipsNeeded .line.job.slipsent{opacity:.55}' +
+      '#slipsNeeded .line.job.slipsent .t{color:#5b6675}';
+    document.head.appendChild(st);
+  }
+  function slipsNeededHome() {
+    slipsNeededCss();
+    var jb = $('#jobs'), jbCard = jb && jb.parentNode;
+    if (!jbCard || $('#slipsNeededCard')) {
+      if (!slipsNeededOn() && $('#slipsNeededCard')) {
+        $('#slipsNeededCard').parentNode.removeChild($('#slipsNeededCard'));
+      }
+      if ($('#slipsNeededCard')) loadSlipsNeeded();
+      return;
+    }
+    if (!slipsNeededOn()) return;
+    jbCard.insertAdjacentHTML('afterend',
+      '<div class="card" id="slipsNeededCard"><div class="card-head"><h3>Slips Needed</h3>' +
+      '<span class="muted small" id="slipsNeededCount"></span></div>' +
+      '<div id="slipsNeeded"><div class="loading">Loading slips needed&#x2026;</div></div>' +
+      '<p class="muted small">Events marked Tomato (slip needed) on the WES calendar, from the lookback window through today. Tap one to view it and make a slip.</p></div>');
+    loadSlipsNeeded();
+  }
+  function slipsNeededHtml(j) {
+    if (!j || !j.ok) return '<p class="muted">' + esc((j && j.message) || 'Slips needed could not be loaded.') + '</p>';
+    if (!j.events || !j.events.length) return '<p class="muted" id="slipsNeededEmpty">All caught up</p>';
+    return j.events.map(function (e, i) {
+      var sent = !!(e.slipDone || e.slipSent);
+      var tech = e.techLetters ? ' &#183; ' + esc(e.techLetters) : '';
+      return '<div class="line job' + (sent ? ' slipsent' : '') + '" role="button" tabindex="0" data-i="' + i + '" aria-label="Open ' + esc(e.title) + '">' +
+        '<div class="l"><span class="t">' + esc(e.title) + '</span>' +
+        '<span class="s">' + esc(e.date ? longDate(e.date) : '') + tech +
+          (sent ? ' &#183; Slip sent' : '') + '</span></div>' +
+        '<span class="r row">' + (sent ? '' : chip(e.calendarColor || e.color)) +
+        '<span class="tap" aria-hidden="true">&#8250;</span></span></div>';
+    }).join('');
+  }
+  function loadSlipsNeeded() {
+    var el = $('#slipsNeeded'); if (!el) return;
+    if (!slipsNeededOn()) { var c = $('#slipsNeededCard'); if (c && c.parentNode) c.parentNode.removeChild(c); return; }
+    call('apiSlipsNeeded').then(function (j) {
+      var box = $('#slipsNeeded'); if (!box) return;
+      S.slipsNeeded = j && j.ok ? (j.events || []) : [];
+      box.innerHTML = slipsNeededHtml(j);
+      var n = j && j.ok ? (j.count || S.slipsNeeded.length) : 0;
+      var cnt = $('#slipsNeededCount');
+      if (cnt) cnt.textContent = j && j.ok ? (n ? (n + (n === 1 ? ' slip' : ' slips')) : '') : '';
+      wireSlipsNeeded(box);
+      slipsNeededMark(box);
+    }).catch(function (err) {
+      var box = $('#slipsNeeded'); if (box) box.innerHTML = '<p class="muted">' + esc(errMsg(err)) + '</p>';
+    });
+  }
+  function wireSlipsNeeded(el) {
+    $all('.line.job', el).forEach(function (row) {
+      row.addEventListener('click', function () {
+        var e = (S.slipsNeeded || [])[+row.getAttribute('data-i')];
+        if (e) openJob(e);
+      });
+      row.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          var e = (S.slipsNeeded || [])[+row.getAttribute('data-i')];
+          if (e) openJob(e);
+        }
+      });
+    });
+  }
+  function slipsNeededMark(el) {
+    el = el || $('#slipsNeeded');
+    var Q = (typeof slipQ === 'function') ? slipQ() : null;
+    if (!el) return;
+    $all('.line.job', el).forEach(function (line) {
+      var ev = (S.slipsNeeded || [])[+line.getAttribute('data-i')];
+      if (!ev) return;
+      var queued = Q && ev.id ? Q.slipFor(ev.id, ev.date) : null;
+      var sent = !!(ev.slipDone || ev.slipSent || (queued && queued.status !== 'attention'));
+      if (queued && queued.status === 'attention') sent = false;
+      ev.slipSent = sent;
+      line.classList.toggle('slipsent', sent);
+      var s = $('.s', line);
+      if (s && sent && s.textContent.indexOf('Slip sent') < 0) s.insertAdjacentHTML('beforeend', ' &#183; Slip sent');
+    });
+  }
+  function lockTimeOffForm(date, e, email, tc, day) {
+    var base = email ? '/' + encodeURIComponent(email) : '';
+    var who = email && tc && tc.person ? tc.person.name : '';
+    app.innerHTML = '<h1>Time off hours</h1>' + (who ? '<p class="sub">' + esc(who) + '</p>' : '') +
+      '<div class="card"><div class="line"><div class="l"><span class="t">' + esc(e.dayType) + ' day</span>' +
+      '<span class="s">' + esc(longDate(e.date || date)) + (e.startLabel ? ' &#183; ' + esc(e.startLabel) + ' \u2013 ' + esc(e.endLabel) : '') +
+      (e.hours ? ' &#183; ' + fmtH(e.hours) : '') + '</span></div></div>' +
+      (e.note ? '<p class="muted">' + esc(e.note) + '</p>' : '') +
+      '<div class="note" id="toffLocked">These hours came from an approved time-off request. They can\'t be edited or deleted here. Only cancelling the request changes them.</div></div>' +
+      '<div class="actions"><button class="btn" id="histBtn">History</button></div><div id="hist"></div>' +
+      '<a class="btn block" href="#log/' + esc(date) + base + '">Back to the day</a>';
+    $('#histBtn').onclick = function () {
+      call('apiEntryHistory', e.id).then(function (h) {
+        $('#hist').innerHTML = '<div class="card"><h3>History</h3>' + (h && h.length ? h.map(function (x) {
+          return '<div class="line"><div class="l"><span class="t">' + esc(x.action) + (x.field && x.field !== '(all)' ? ': ' + esc(x.field) : '') +
+            (x.oldValue || x.newValue ? ' <span class="muted small">' + esc(x.oldValue) + ' &#8594; ' + esc(x.newValue) + '</span>' : '') + '</span>' +
+            '<span class="s">' + esc(x.at) + ' by ' + esc(x.by) + (x.reason ? ' &#183; "' + esc(x.reason) + '"' : '') + '</span></div></div>';
+        }).join('') : '<p class="muted">No history.</p>') + '</div>';
+      }).catch(fail);
+    };
+  }
 
   start();
 })();
