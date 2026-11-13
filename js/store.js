@@ -33,6 +33,11 @@
     // dropped: slips saved on the phone before an update are still there after it.
     function v2(db) {
       if (!db.objectStoreNames.contains('slips')) db.createObjectStore('slips', { keyPath: 'cid' });
+    },
+    // v1.9: queued receipt photos (keyPath cid = clientReceiptId). Added, never dropped, so a receipt saved
+    // on the phone before an update is still there after it.
+    function v3(db) {
+      if (!db.objectStoreNames.contains('receipts')) db.createObjectStore('receipts', { keyPath: 'cid' });
     }
   ];
 
@@ -90,7 +95,7 @@
   IdbStore.prototype.close = function () { if (this.db) { this.db.close(); this.db = null; } };
 
   function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
-  function MemoryStore() { this.data = { kv: {}, outbox: {}, problems: {}, slips: {} }; }
+  function MemoryStore() { this.data = { kv: {}, outbox: {}, problems: {}, slips: {}, receipts: {} }; }
   MemoryStore.prototype.open = function () { return Promise.resolve(this); };
   MemoryStore.prototype.get = function (store, key) { return Promise.resolve(clone(this.data[store][key])); };
   MemoryStore.prototype.put = function (store, value, key) {
