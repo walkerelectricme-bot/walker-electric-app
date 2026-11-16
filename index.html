@@ -643,6 +643,7 @@
     closePhoto();
     setTab(tab);
     if (page.indexOf('mod-') === 0 && !isMod()) { go('#home'); return; }
+    usageScreen(page, p); // v1.9.1 use-hook
     if (page === 'mod-mods') return renderModMods(); // v1.7 mods-hook
     if (page === 'mod-requests') return renderModRequests(); // v1.8 to-hook
     switch (page) {
@@ -4448,7 +4449,7 @@
   }
 
   /** Fresh switches from the server (phone app): keep S.boot in step and redraw Tools / Home / More when they changed. */
-  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder'];
+  var BOOT_SWITCHES = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder', 'usageMode'];
   function bootView(b) {
     var u = b.user || {};
     return JSON.stringify([BOOT_SWITCHES.map(function (k) { return b[k] === undefined ? null : b[k]; }), !!u.isModerator, u.role, u.name, u.tier]);
@@ -5119,6 +5120,38 @@
         '<img alt="Receipt" style="max-width:100%;border-radius:8px" src="' + r.dataUrl + '">' +
         (rec.fileUrl ? '<p class="muted small"><a target="_blank" rel="noopener" href="' + esc(rec.fileUrl) + '">Open in Drive</a></p>' : ''));
     }).catch(function (err) { fail(err); go('#tool/receipt'); });
+  }
+
+
+  /* ================= Private usage counter (v1.9.1) =================
+   * Records an allowlisted screen view or tool open on the phone (engine.recordUsage). Counts are batched
+   * per tech per day, queued with no signal, and flushed with the regular apiSync - never a request per tap.
+   * No GPS and no job, customer or form content. Hidden from techs. USAGE_MODE off stops new counts.
+   * The one-line router hook ends in "// v1.9.1 use-hook". This section sits after the v1.9 receipts
+   * screens and before start(), so it is cut with the points screens in the slip regression test.
+   */
+  var USAGE_SCREENS = { home:1, time:1, tools:1, more:1, points:1, timeoff:1,
+    'mod-users':1, 'mod-time':1, 'mod-timeoff':1, 'mod-points':1, 'mod-rewards':1,
+    'mod-settings':1, 'mod-mods':1, 'mod-requests':1 };
+  var USAGE_TOOLS = { workorders:1, generators:1, pending:1, odds:1, finish:1, gallery:1,
+    vehicles:1, materials:1, customers:1, receipt:1 };
+  function usageOn() { return !(S.boot && S.boot.usageMode === 'off'); }
+  function usageEngine() {
+    var e = window.WES_ENGINE;
+    return e && typeof e.recordUsage === 'function' ? e : null;
+  }
+  function usageScreen(page, parts) {
+    var eng = usageEngine();
+    if (!eng || !usageOn()) return;
+    page = page || 'home';
+    if (page === 'tool') {
+      var id = String((parts && parts[1]) || '').toLowerCase();
+      if (USAGE_TOOLS[id]) eng.recordUsage('tool', id);
+      return;
+    }
+    var map = { log: 'time', blk: 'time', week: 'time', 'mod-user': 'mod-users' };
+    var name = map[page] || page;
+    if (USAGE_SCREENS[name]) eng.recordUsage('screen', name);
   }
 
   start();
