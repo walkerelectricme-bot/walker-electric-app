@@ -30,6 +30,9 @@
  *    a full sync before the first screen, once per app version. v1.7 generator "Edit name / address": needs signal.
  *  - v1.8 time-off requests (TIMEOFF_MODE on): apiTimeOffSubmit / cancel-pending go through the outbox with a
  *    clientRequestId (deduped like slips). More > Requests (approve / deny / cancel approved) needs signal.
+ *  - v1.9.1 private usage counter (USAGE_MODE on / off, default on): screen views and tool opens are counted on the
+ *    phone per tech per day (allowlisted names only; no GPS, no job or customer content) and flushed with apiSync.
+ *    Never a request per tap. Counts are not shown on the status line.
  *
  * Sync: when the app opens, on the browser "online" event, about every 60 s (shell.js), and when the status line is
  * tapped. Changes go up in batches (apiSync), oldest first; the server is idempotent on the client ID, so a retry after
@@ -57,12 +60,12 @@
   var SLIP_TIMEOUT_MS = 30000;
   var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
   // v1.4 generator service tool
-  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded', 'receipts'];
+  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded', 'receipts', 'usage'];
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
   var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
   // v1.7 fresh settings: the boot switches this app version knows (a cached boot without one of them is refreshed first)
-  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder'];
+  var BOOT_KEYS = ['generatorMode', 'vehiclesMode', 'customersMode', 'materialsPicker', 'genEditMode', 'isOwner', 'timeOffMode', 'timeOffPending', 'slipsNeededMode', 'receiptsMode', 'toolsOrder', 'usageMode'];
   var GEN_NO_COPY = 'OFFLINE: No signal. The generator list shows here once this phone has it (open Generator service once with signal).';
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -88,6 +91,20 @@
   }
   function localDs(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
   function localHm(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  // v1.9.1: allowlisted names only (mirrors Usage.gs). Unknown names are dropped, never queued as free text.
+  var USAGE_SCREENS = { home:1, time:1, tools:1, more:1, points:1, timeoff:1,
+    'mod-users':1, 'mod-time':1, 'mod-timeoff':1, 'mod-points':1, 'mod-rewards':1,
+    'mod-settings':1, 'mod-mods':1, 'mod-requests':1 };
+  var USAGE_TOOLS = { workorders:1, generators:1, pending:1, odds:1, finish:1, gallery:1,
+    vehicles:1, materials:1, customers:1, receipt:1 };
+  var USAGE_MAX_COUNT_ = 1000;
+  function usageCleanName(v) { return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32); }
+  function usageNameOk(kind, name) {
+    if (kind === 'tool') return !!USAGE_TOOLS[name];
+    if (kind === 'screen') return !!USAGE_SCREENS[name];
+    return false;
+  }
+
   function stamp(d) { return localDs(d) + ' ' + localHm(d); }
 
   /* ---------------- The status line (pure, so it is easy to test) ---------------- */
@@ -189,6 +206,79 @@
   };
   Engine.prototype.saveMeta = function () { return this.store.put('kv', this.meta, 'meta'); };
   Engine.prototype.setKv = function (k, v) { this.kv[k] = v; return this.store.put('kv', v, k); };
+
+  /* ---------------- v1.9.1 private usage counter ---------------- */
+  Engine.prototype.usageOn = function () {
+    var b = this.kv.boot || {};
+    return b.usageMode !== 'off';
+  };
+  Engine.prototype.usageState = function () {
+    return this.kv.usage || (this.kv.usage = { days: {}, flush: null });
+  };
+  Engine.prototype.usagePending = function () {
+    var days = (this.kv.usage && this.kv.usage.days) || {};
+    return Object.keys(days).some(function (d) {
+      var bag = days[d] || {};
+      return Object.keys(bag).some(function (k) { return (bag[k] || 0) > 0; });
+    });
+  };
+  /**
+   * Count one allowlisted screen view or tool open. Batched on the phone; never calls the server by itself.
+   * kind: 'screen' | 'tool'. No GPS and no content - name must already be an allowlisted id.
+   */
+  Engine.prototype.recordUsage = function (kind, name) {
+    if (!this.usageOn()) return;
+    kind = String(kind || '').toLowerCase();
+    name = usageCleanName(name);
+    if (!usageNameOk(kind, name)) return;
+    var st = this.usageState();
+    var day = this.today();
+    if (!st.days[day]) st.days[day] = {};
+    var key = kind + ':' + name;
+    var n = (st.days[day][key] || 0) + 1;
+    if (n > USAGE_MAX_COUNT_) n = USAGE_MAX_COUNT_;
+    st.days[day][key] = n;
+    this.setKv('usage', st);
+  };
+  /** Snapshot of pending counts to send with apiSync. Reuses the same cid until the server acknowledges it. */
+  Engine.prototype.usageFlushPayload = function () {
+    var st = this.usageState();
+    if (st.flush && st.flush.cid && Array.isArray(st.flush.days) && st.flush.days.length) return st.flush;
+    var days = [];
+    Object.keys(st.days).sort().forEach(function (date) {
+      var items = [];
+      Object.keys(st.days[date] || {}).forEach(function (k) {
+        var n = st.days[date][k] || 0;
+        if (n < 1) return;
+        var i = k.indexOf(':');
+        if (i < 1) return;
+        var kind = k.slice(0, i), name = k.slice(i + 1);
+        if (!usageNameOk(kind, name)) return;
+        items.push({ kind: kind, name: name, count: n });
+      });
+      if (items.length) days.push({ date: date, items: items });
+    });
+    if (!days.length) { st.flush = null; return null; }
+    st.flush = { cid: uuid(), days: days, appVersion: this.version, deviceId: this.meta.deviceId };
+    this.setKv('usage', st);
+    return st.flush;
+  };
+  /** Subtract a flushed snapshot; counts that arrived during the request stay queued. */
+  Engine.prototype.usageFlushed = function (payload) {
+    var st = this.usageState();
+    (payload && payload.days || []).forEach(function (d) {
+      var bag = st.days[d.date];
+      if (!bag) return;
+      (d.items || []).forEach(function (it) {
+        var k = it.kind + ':' + it.name;
+        bag[k] = (bag[k] || 0) - (it.count || 0);
+        if (bag[k] <= 0) delete bag[k];
+      });
+      if (!Object.keys(bag).length) delete st.days[d.date];
+    });
+    if (st.flush && payload && st.flush.cid === payload.cid) st.flush = null;
+    return this.setKv('usage', st);
+  };
 
   /** A new key on this phone (someone else signed in): drop the cached data of the previous person. */
   Engine.prototype.setKey = function (key) {
@@ -470,10 +560,13 @@
   Engine.prototype.syncLoop = function (opts, round) {
     var self = this;
     var ops = self.myOps().slice(0, BATCH);
-    if (!ops.length && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
+    var usage = self.usageFlushPayload(); // v1.9.1: ride along with this sync, no extra request
+    if (!ops.length && !usage && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
     if (round > 20) return Promise.resolve();
     var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, veh: o.veh, toff: o.toff, phoneTime: o.phoneTime }; });
-    return self.rcall('apiSync', [{ appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true }], 30000)
+    var batch = { appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true };
+    if (usage) batch.usage = usage;
+    return self.rcall('apiSync', [batch], 30000)
       .then(function (res) {
         var byCid = {}, gone = {}, stop = false, writes = [];
         ops.forEach(function (o) { byCid[o.cid] = o; });
@@ -500,6 +593,9 @@
         self.outbox = self.outbox.filter(function (o) { return !gone[o.cid]; });
         if (res.time) writes.push(self.setKv('time', res.time));
         if (res.timeoff) writes.push(self.setKv('timeoff', { at: self.nowMs(), data: res.timeoff })); // v1.8
+        if (usage && res.usage && res.usage.cid === usage.cid && (res.usage.status === 'done' || res.usage.skipped)) {
+          writes.push(self.usageFlushed(usage)); // v1.9.1
+        }
         self.meta.lastSync = self.nowMs();
         writes.push(self.saveMeta());
         return Promise.all(writes).then(function () {
