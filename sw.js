@@ -5,9 +5,9 @@
  *  - Data never goes through this cache: calls to the Apps Script data service (POST) go straight to the network, and
  *    the time card, outbox and cached jobs live in IndexedDB (store.js), which updates never touch.
  */
-var VERSION = 'wes-shell-v1.9.1-e5f76869ee';
+var VERSION = 'wes-shell-v1.9.4-71c027921e';
 var SHELL = ['./', './index.html', './config.js', './manifest.webmanifest', './css/shell.css', './js/timecore.js', './js/store.js',
-  './js/remote.js', './js/engine.js', './js/shell.js', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+  './js/remote.js', './js/engine.js', './js/shell.js', './sparky.html', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', function (ev) {
   ev.waitUntil(caches.open(VERSION).then(function (c) { return c.addAll(SHELL); }));
@@ -32,7 +32,14 @@ self.addEventListener('fetch', function (ev) {
   if (url.origin !== self.location.origin) return;        // Google, map links: not ours to cache
   if (req.mode === 'navigate') {
     // The app page: the cached copy (works with no signal); ?k= sign-in links open the same page.
-    ev.respondWith(caches.match('./index.html').then(function (hit) { return hit || fetch(req); }));
+    // Sparky Run is its own page: serve the cached game, not the app shell.
+    ev.respondWith((function () {
+      var path = url.pathname || '';
+      if (/\/sparky\.html$/i.test(path)) {
+        return caches.match('./sparky.html', { ignoreSearch: true }).then(function (hit) { return hit || fetch(req); });
+      }
+      return caches.match('./index.html').then(function (hit) { return hit || fetch(req); });
+    })());
     return;
   }
   ev.respondWith(caches.match(req, { ignoreSearch: true }).then(function (hit) { return hit || fetch(req); }));

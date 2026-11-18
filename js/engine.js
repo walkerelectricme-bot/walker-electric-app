@@ -96,7 +96,7 @@
     'mod-users':1, 'mod-time':1, 'mod-timeoff':1, 'mod-points':1, 'mod-rewards':1,
     'mod-settings':1, 'mod-mods':1, 'mod-requests':1 };
   var USAGE_TOOLS = { workorders:1, generators:1, pending:1, odds:1, finish:1, gallery:1,
-    vehicles:1, materials:1, customers:1, receipt:1 };
+    vehicles:1, materials:1, customers:1, receipt:1, sparky:1 };
   var USAGE_MAX_COUNT_ = 1000;
   function usageCleanName(v) { return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32); }
   function usageNameOk(kind, name) {

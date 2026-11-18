@@ -1127,6 +1127,7 @@
     vehSyncTool(); // v1.6 veh-hook
     custSyncTool(); // v1.6 cust-hook
     recSyncTool(); // v1.9 rec-hook
+    sparkySyncTool(); // v1.9.4 sparky-hook
     orderTools(); // v1.9 rec-hook
     app.innerHTML = '<h1>Tools</h1><p class="sub">Everything else Walker Electric uses</p>' +
       '<div class="tools" id="toolGrid">' + TOOLS.map(toolTile).join('') + '</div>' +
@@ -1140,6 +1141,7 @@
     vehSyncTool(); // v1.6 veh-hook
     custSyncTool(); // v1.6 cust-hook
     recSyncTool(); // v1.9 rec-hook
+    sparkySyncTool(); // v1.9.4 sparky-hook
     orderTools(); // v1.9 rec-hook
     var t = TOOLS.filter(function (x) { return x.id === id; })[0];
     if (!t) { go('#tools'); return; }
@@ -5123,6 +5125,30 @@
   }
 
 
+
+  /* ================= Sparky Run (v1.9.4) =================
+   * Tools > Sparky Run. A local, offline mini-game (web/sparky.html). Visible to every tech on the
+   * phone app. Not listed in TOOLS_ORDER, so it is appended at the end. High score stays in
+   * localStorage; no server calls. The tile is hidden in the Apps Script web app, which does not
+   * host sparky.html. Hooks end in "// v1.9.4 sparky-hook".
+   */
+  ICONS.sparky = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>';
+  var SPARKY_TOOL = { id: 'sparky', title: 'Sparky Run', subtitle: 'Quick break game', icon: 'sparky',
+    action: { type: 'page', render: function () { goSparky(); } } };
+  function sparkyOnPwa() { return !!(window.WES_SHELL || window.WES_TEST_STORE || window.WES_TEST_REMOTE); }
+  function sparkySyncTool() {
+    var on = sparkyOnPwa(), i = -1;
+    TOOLS.forEach(function (t, n) { if (t.id === 'sparky') i = n; });
+    if (on && i < 0) TOOLS.push(SPARKY_TOOL);
+    if (!on && i >= 0) TOOLS.splice(i, 1);
+  }
+  function goSparky() {
+    var href = 'sparky.html?from=app';
+    window.WES_SPARKY_HREF = href;
+    if (window.WES_TEST_STORE) return; // tests: do not navigate jsdom off the app page
+    location.href = href;
+  }
+
   /* ================= Private usage counter (v1.9.1) =================
    * Records an allowlisted screen view or tool open on the phone (engine.recordUsage). Counts are batched
    * per tech per day, queued with no signal, and flushed with the regular apiSync - never a request per tap.
@@ -5134,7 +5160,7 @@
     'mod-users':1, 'mod-time':1, 'mod-timeoff':1, 'mod-points':1, 'mod-rewards':1,
     'mod-settings':1, 'mod-mods':1, 'mod-requests':1 };
   var USAGE_TOOLS = { workorders:1, generators:1, pending:1, odds:1, finish:1, gallery:1,
-    vehicles:1, materials:1, customers:1, receipt:1 };
+    vehicles:1, materials:1, customers:1, receipt:1, sparky:1 };
   function usageOn() { return !(S.boot && S.boot.usageMode === 'off'); }
   function usageEngine() {
     var e = window.WES_ENGINE;
