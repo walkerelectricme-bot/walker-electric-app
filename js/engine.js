@@ -60,7 +60,7 @@
   var SLIP_TIMEOUT_MS = 30000;
   var SLIP_QUEUED_MSG = 'Saved on this phone. Waiting to sync: it goes to the office by itself when you have signal.';
   // v1.4 generator service tool
-  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded', 'receipts', 'usage'];
+  var KV_KEYS = ['boot', 'time', 'jobs', 'odds', 'finish', 'points', 'mats', 'reads', 'gen', 'genSent', 'timeoff', 'slipsNeeded', 'receipts', 'usage', 'game'];
   var GEN_FRESH_MS = 5 * 60 * 1000;       // the generator copy younger than this opens without asking the server
   var GEN_QUEUED_MSG = 'Saved on this phone. Waiting to upload: it goes to the Generator Service Database by itself when you have signal.';
   var CUST_NEEDS_SIGNAL = 'OFFLINE: Customer info needs signal. It is never saved on this phone.';
@@ -278,6 +278,105 @@
     });
     if (st.flush && payload && st.flush.cid === payload.cid) st.flush = null;
     return this.setKv('usage', st);
+  };
+
+  /* v1.9.5: shared Sparky Master. The phone keeps its local best; when that best improves it rides
+   * along on the regular apiSync batch (batch.game), same as usage. GAME_SCORES_MODE off stops flushes. */
+  function cleanSparkyBest_(b) {
+    if (!b || typeof b !== 'object') return null;
+    var s = Math.floor(Number(b.score));
+    if (!isFinite(s) || s < 0) return null;
+    if (s > 1000000) s = 1000000;
+    return { score: s, name: String(b.name || '').slice(0, 80), date: String(b.date || '').slice(0, 10) };
+  }
+  function betterSparkyBest_(a, b) {
+    a = cleanSparkyBest_(a); b = cleanSparkyBest_(b);
+    if (!a || a.score < 1) return b;
+    if (!b || b.score < 1) return a;
+    if (b.score > a.score) return b;
+    if (a.score > b.score) return a;
+    if (b.date && (!a.date || b.date < a.date)) return b;
+    if (a.date && (!b.date || a.date < b.date)) return a;
+    return a;
+  }
+  Engine.prototype.gameState = function () { return this.kv.game || (this.kv.game = {}); };
+  Engine.prototype.gameScoresOn = function () {
+    var b = this.kv.boot || {};
+    if (!('gameScoresMode' in b)) return false; // older server: do not send batch.game
+    return b.gameScoresMode !== 'off';
+  };
+  Engine.prototype.pullLocalSparkyBest = function () {
+    var fromLs = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        var raw = localStorage.getItem('wes_sparky_master');
+        if (raw) fromLs = cleanSparkyBest_(JSON.parse(raw));
+        if (!fromLs || fromLs.score < 1) {
+          var n = parseInt(localStorage.getItem('wes_sparky_hi') || '0', 10) || 0;
+          if (n) fromLs = cleanSparkyBest_({ score: n, name: '', date: '' });
+        }
+      }
+    } catch (e) {}
+    var st = this.gameState();
+    var best = betterSparkyBest_(st.localBest, fromLs);
+    if (best) {
+      var prev = st.localBest;
+      if (!prev || prev.score !== best.score || prev.name !== best.name || prev.date !== best.date) {
+        st.localBest = best;
+        this.setKv('game', st);
+      }
+    }
+    return st.localBest || fromLs || null;
+  };
+  /** Tests (and the game page) can record a new local best without writing localStorage. */
+  Engine.prototype.noteSparkyBest = function (best) {
+    var c = cleanSparkyBest_(best);
+    if (!c) return null;
+    var st = this.gameState();
+    st.localBest = betterSparkyBest_(st.localBest, c) || c;
+    return this.setKv('game', st);
+  };
+  Engine.prototype.gameFlushPayload = function () {
+    if (!this.gameScoresOn()) return null;
+    this.pullLocalSparkyBest();
+    var st = this.gameState();
+    if (st.flush && st.flush.cid && st.flush.sparkyBest) return st.flush;
+    var local = st.localBest;
+    if (!local || local.score < 1) return null;
+    if (st.flushed && local.score <= st.flushed.score) return null;
+    st.flush = { cid: uuid(), sparkyBest: clone(local), appVersion: this.version, deviceId: this.meta.deviceId };
+    this.setKv('game', st);
+    return st.flush;
+  };
+  Engine.prototype.gameFlushed = function (payload, res) {
+    var st = this.gameState();
+    if (res && res.skipped) {
+      if (st.flush && payload && st.flush.cid === payload.cid) st.flush = null;
+      return this.setKv('game', st);
+    }
+    if (res && (res.status === 'done' || res.replay)) {
+      if (payload && payload.sparkyBest) st.flushed = clone(payload.sparkyBest);
+      if (st.flush && payload && st.flush.cid === payload.cid) st.flush = null;
+    }
+    if (res && res.sparkyMaster) st.sparkyMaster = cleanSparkyBest_(res.sparkyMaster);
+    return this.setKv('game', st);
+  };
+  Engine.prototype.gameGotMaster = function (master, mode) {
+    var st = this.gameState();
+    if (mode !== undefined) st.mode = mode;
+    if (master) st.sparkyMaster = cleanSparkyBest_(master);
+    else if (this.gameScoresOn()) st.sparkyMaster = null;
+    return this.setKv('game', st);
+  };
+  /** Banner pick: max of the last shared top (when mode is on) and this phone's local best. */
+  Engine.prototype.sparkyBanner = function () {
+    var local = this.pullLocalSparkyBest();
+    var shared = this.sparkyShared();
+    return betterSparkyBest_(local, shared) || local || shared || { score: 0, name: '', date: '' };
+  };
+  Engine.prototype.sparkyShared = function () {
+    if (!this.gameScoresOn()) return null;
+    return cleanSparkyBest_((this.kv.game && this.kv.game.sparkyMaster) || (this.kv.boot && this.kv.boot.sparkyMaster) || null);
   };
 
   /** A new key on this phone (someone else signed in): drop the cached data of the previous person. */
@@ -561,11 +660,13 @@
     var self = this;
     var ops = self.myOps().slice(0, BATCH);
     var usage = self.usageFlushPayload(); // v1.9.1: ride along with this sync, no extra request
-    if (!ops.length && !usage && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
+    var game = self.gameFlushPayload(); // v1.9.5: shared Sparky Master rides along, no extra request
+    if (!ops.length && !usage && !game && !opts.pull && !opts.full && self.meta.lastSync && self.nowMs() - self.meta.lastSync < PULL_EVERY_MS) return Promise.resolve();
     if (round > 20) return Promise.resolve();
     var wire = ops.map(function (o) { return { cid: o.cid, type: o.type, ref: o.ref, entry: o.entry, gen: o.gen, veh: o.veh, toff: o.toff, phoneTime: o.phoneTime }; });
     var batch = { appVersion: self.version, deviceId: self.meta.deviceId, ops: wire, pull: true };
     if (usage) batch.usage = usage;
+    if (game) batch.game = game;
     return self.rcall('apiSync', [batch], 30000)
       .then(function (res) {
         var byCid = {}, gone = {}, stop = false, writes = [];
@@ -596,6 +697,10 @@
         if (usage && res.usage && res.usage.cid === usage.cid && (res.usage.status === 'done' || res.usage.skipped)) {
           writes.push(self.usageFlushed(usage)); // v1.9.1
         }
+        if (game && res.game && res.game.cid === game.cid && (res.game.status === 'done' || res.game.skipped || res.game.replay)) {
+          writes.push(self.gameFlushed(game, res.game)); // v1.9.5
+        }
+        if (res && 'sparkyMaster' in res) writes.push(self.gameGotMaster(res.sparkyMaster));
         self.meta.lastSync = self.nowMs();
         writes.push(self.saveMeta());
         return Promise.all(writes).then(function () {
@@ -612,7 +717,10 @@
     var oldSig = bootSig(self.kv.boot), hadBoot = !!self.kv.boot;
     return self.rcall('apiOfflineSnapshot', [gv ? { genVersion: gv } : {}], 60000).then(function (s) {
       var at = self.nowMs(), w = [];
-      if (s.boot) w.push(self.setKv('boot', s.boot));
+      if (s.boot) {
+        w.push(self.setKv('boot', s.boot));
+        if ('sparkyMaster' in s.boot || 'gameScoresMode' in s.boot) w.push(self.gameGotMaster(s.boot.sparkyMaster, s.boot.gameScoresMode));
+      }
       var bootChanged = !!(s.boot && hadBoot && bootSig(s.boot) !== oldSig); // v1.7: tell the page (Tools / Home)
       if (s.time) w.push(self.setKv('time', s.time));
       if (s.points !== undefined) w.push(self.setKv('points', { at: at, data: s.points }));
@@ -768,6 +876,12 @@
     b.app.serverVersion = b.app.version;
     b.app.version = this.version;
     b.offline = true;
+    if (this.gameScoresOn()) {
+      var shared = this.sparkyShared();
+      if (shared) b.sparkyMaster = clone(shared);
+    } else {
+      delete b.sparkyMaster;
+    }
     return b;
   };
 
