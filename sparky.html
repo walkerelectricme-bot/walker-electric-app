@@ -10,24 +10,27 @@
   html,body{height:100%;background:#000;color:#111;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:none}
   #app{display:flex;flex-direction:column;width:100%;height:100%}
-  header{background:#000;color:#fff;display:flex;align-items:center;gap:8px;height:36px;flex:0 0 auto;
+  header{position:relative;z-index:10;background:#000;color:#fff;display:flex;align-items:center;gap:6px;
+    height:44px;flex:0 0 auto;min-height:44px;
     padding:0 max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));border-bottom:2px solid #d71920}
-  header .logo{display:flex;align-items:center;gap:6px;font-weight:800;font-size:14px;letter-spacing:.5px;white-space:nowrap}
-  header .logo b{color:#d71920}
-  header .sub{font-size:10px;opacity:.6;font-weight:500;margin-left:4px}
-  header .sp{flex:1}
-  .chip{display:flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:6px;background:#1b1b1b;border:1px solid #333;white-space:nowrap}
+  header .exit{display:flex;align-items:center;justify-content:center;gap:4px;height:36px;padding:0 10px;min-width:70px;
+    background:#d71920;border:2px solid #fff;color:#fff;border-radius:8px;text-decoration:none;
+    font-weight:900;font-size:14px;letter-spacing:.3px;white-space:nowrap;flex:0 0 auto;z-index:11;
+    -webkit-tap-highlight-color:transparent;cursor:pointer}
+  header .exit:active{background:#a51016}
+  header .master{display:flex;align-items:baseline;gap:8px;min-width:0;flex:1 1 auto;height:36px;padding:0 8px;
+    border-radius:8px;background:#1b1b1b;border:1px solid #f5c400;overflow:hidden;white-space:nowrap}
+  header .master-title{font-size:9px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:#f5c400;flex:0 0 auto}
+  header .master-score{font:900 16px/1.1 ui-monospace,"SFMono-Regular",Menlo,Consolas,"Courier New",monospace;letter-spacing:1px;color:#fff;flex:0 0 auto}
+  header .master-name{font-size:12px;font-weight:700;color:#ddd;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  header .sp{flex:0 0 auto}
+  .chip{display:flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:6px;background:#1b1b1b;border:1px solid #333;white-space:nowrap;flex:0 0 auto}
   .chip .lbl{font-size:10px;font-weight:800;letter-spacing:1.5px;opacity:.7}
   .chip .val{font:900 17px/1.2 ui-monospace,"SFMono-Regular",Menlo,Consolas,"Courier New",monospace;letter-spacing:1px}
   .chip.score{border-color:#d71920}
   .chip .val.flash{color:#f5c400}
-  header button{background:#1b1b1b;border:1px solid #333;color:#fff;width:34px;height:28px;border-radius:6px;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+  header button{background:#1b1b1b;border:1px solid #333;color:#fff;width:36px;height:36px;border-radius:8px;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
   header button:active{background:#d71920}
-  header .back{display:none;align-items:center;gap:2px;height:28px;padding:0 8px;margin-right:2px;
-    background:#1b1b1b;border:1px solid #333;color:#fff;border-radius:6px;text-decoration:none;
-    font-weight:800;font-size:12px;letter-spacing:.2px;white-space:nowrap;flex:0 0 auto}
-  header.from-app .back{display:flex}
-  header .back:active{background:#d71920}
   #stage{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;touch-action:none;cursor:pointer;background:#000;overflow:hidden}
   canvas{display:block}
   .pad{position:absolute;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:8px;
@@ -53,16 +56,13 @@
 <body>
 <div id="app">
   <header>
-    <a id="backBtn" class="back" href="index.html#tools" hidden>&#8249; Back</a>
-    <div class="logo">
-      <svg width="18" height="18" viewBox="0 0 11 11" shape-rendering="crispEdges" aria-hidden="true">
-        <path fill="#d71920" d="M6 0h4L7 4h3L3 11l2-5H2z"/>
-      </svg>
-      <div>W<b>E</b>S Sparky Run</div>
+    <a id="exitBtn" class="exit" href="index.html#tools">&#10005; Exit</a>
+    <div id="master" class="master" aria-live="polite">
+      <span class="master-title">Sparky Master</span>
+      <span class="master-score" id="masterScore">00000</span>
+      <span class="master-name" id="masterName" hidden></span>
     </div>
-    <div class="sp"></div>
     <div class="chip score"><span class="lbl">SCORE</span><span class="val" id="scoreVal">00000</span></div>
-    <div class="chip"><span class="lbl">HI</span><span class="val" id="hiVal">00000</span></div>
     <button id="pauseBtn" aria-label="Pause" title="Pause (P)">
       <svg width="14" height="14" viewBox="0 0 8 8" shape-rendering="crispEdges"><path id="pauseIcon" fill="#fff" d="M1 1h2v6H1zM5 1h2v6H5z"/></svg>
     </button>
@@ -91,25 +91,38 @@
 <script>
 (() => {
 'use strict';
-// ---------- Back to the app (only when opened from Tools) ----------
-const FROM_APP = /(?:^|[?&])from=app(?:&|$)/.test(location.search || '');
+// ---------- Exit back to Tools (always shown: this page is only opened from the app) ----------
 const BACK_HREF = 'index.html#tools';
-(function setupBack(){
+const FROM_APP = /(?:^|[?&])from=app(?:&|$)/.test(location.search || '') || (function(){
+  try { return sessionStorage.getItem('wes_sparky_from_app') === '1'; } catch(e){ return false; }
+})() || (function(){
+  try { const r = document.referrer; return !!r && /(?:\/index\.html)?(?:#|$)/.test(new URL(r, location.href).pathname + new URL(r, location.href).hash) && new URL(r, location.href).origin === location.origin; } catch(e){ return false; }
+})();
+function exitToTools(e){
+  if (e) e.preventDefault();
+  window.WES_SPARKY_BACK_TO = BACK_HREF;
+  const go = function () { location.assign(BACK_HREF); };
+  const unlock = function () {
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch(_){}
+    if (document.fullscreenElement && document.exitFullscreen) return Promise.resolve(document.exitFullscreen());
+    return Promise.resolve();
+  };
+  Promise.resolve().then(unlock).then(go, go);
+}
+(function setupExit(){
   const app = document.getElementById('app');
-  const btn = document.getElementById('backBtn');
-  if (!btn) return;
-  if (!FROM_APP) { btn.hidden = true; return; }
+  const btn = document.getElementById('exitBtn');
   if (app) app.classList.add('from-app');
+  if (!btn) return;
   btn.hidden = false;
   btn.setAttribute('href', BACK_HREF);
-  btn.addEventListener('click', function (e) {
-    e.preventDefault();
-    window.WES_SPARKY_BACK_TO = BACK_HREF;
-    const go = function () { location.href = BACK_HREF; };
-    if (document.fullscreenElement && document.exitFullscreen) {
-      Promise.resolve(document.exitFullscreen()).then(go, go);
-    } else go();
-  });
+  btn.addEventListener('click', exitToTools);
+  // If this page is the only history entry (no Tools under it), consume Android back
+  // and go to Tools instead of closing the installed app.
+  if ((history.length || 1) <= 1) {
+    try { history.pushState({ wesSparky: 1 }, '', location.href); } catch(_){}
+    window.addEventListener('popstate', function () { exitToTools(); });
+  }
 })();
 
 // ---------- Storage ----------
@@ -117,7 +130,110 @@ const LS = {
   get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : v; }catch(e){ return d; } },
   set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
 };
-const HI_KEY = 'wes_sparky_hi', MUTE_KEY = 'wes_sparky_mute';
+const HI_KEY = 'wes_sparky_hi', MASTER_KEY = 'wes_sparky_master', MUTE_KEY = 'wes_sparky_mute', NAME_KEY = 'wes_sparky_name';
+const SHARED_KEY = 'wes_sparky_shared', BANNER_KEY = 'wes_sparky_banner';
+function todayStamp(){
+  const d = new Date();
+  const p = n => (n < 10 ? '0' : '') + n;
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function cleanBest(b){
+  if (!b || typeof b !== 'object' || !isFinite(+b.score)) return null;
+  const s = Math.max(0, Math.floor(+b.score));
+  return { score: s, name: String(b.name || ''), date: String(b.date || '') };
+}
+function betterBest(a, b){
+  a = cleanBest(a); b = cleanBest(b);
+  if (!a || a.score < 1) return b;
+  if (!b || b.score < 1) return a;
+  if (b.score > a.score) return b;
+  if (a.score > b.score) return a;
+  if (b.date && (!a.date || b.date < a.date)) return b;
+  if (a.date && (!b.date || a.date < b.date)) return a;
+  return a;
+}
+function loadLocalMaster(){
+  const raw = LS.get(MASTER_KEY, '');
+  if (raw){
+    try {
+      const o = cleanBest(JSON.parse(raw));
+      if (o) return o;
+    } catch(e){}
+  }
+  const n = parseInt(LS.get(HI_KEY, '0'), 10) || 0;
+  return { score: n, name: '', date: '' };
+}
+function loadStashedShared(){
+  try {
+    const raw = sessionStorage.getItem(SHARED_KEY);
+    if (raw) return cleanBest(JSON.parse(raw));
+  } catch(e){}
+  return null;
+}
+function loadStashedBanner(){
+  try {
+    const raw = sessionStorage.getItem(BANNER_KEY);
+    if (raw) return cleanBest(JSON.parse(raw));
+  } catch(e){}
+  return null;
+}
+function loadMaster(){
+  // Banner is max(last shared Sparky Master, this phone's local best). Offline: last stashed shared + local.
+  return betterBest(loadLocalMaster(), loadStashedShared()) || loadStashedBanner() || loadLocalMaster();
+}
+function saveMaster(m){
+  LS.set(MASTER_KEY, JSON.stringify({ score: m.score, name: m.name || '', date: m.date || todayStamp() }));
+  LS.set(HI_KEY, String(m.score));
+}
+function readStashedName(){
+  try { const s = sessionStorage.getItem(NAME_KEY); if (s && s.trim()) return s.trim(); } catch(e){}
+  return '';
+}
+function playerName(){ return readStashedName() || 'Sparky'; }
+function padScore(n){ return String(Math.max(0, Math.floor(+n || 0))).padStart(5, '0'); }
+function fillMasterBanner(m){
+  const scoreEl = document.getElementById('masterScore'), nameEl = document.getElementById('masterName');
+  if (scoreEl) scoreEl.textContent = padScore(m.score || 0);
+  if (nameEl){
+    if (m.name){ nameEl.textContent = m.name; nameEl.hidden = false; }
+    else { nameEl.textContent = ''; nameEl.hidden = true; }
+  }
+}
+function readKv(key){
+  return new Promise(function (resolve){
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const r = indexedDB.open('wes-offline');
+      r.onerror = function (){ resolve(null); };
+      r.onsuccess = function (){
+        try {
+          const db = r.result;
+          if (!db.objectStoreNames.contains('kv')) { db.close(); return resolve(null); }
+          const g = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+          g.onerror = function (){ try { db.close(); } catch(_){} resolve(null); };
+          g.onsuccess = function (){
+            const v = g.result;
+            try { db.close(); } catch(_){}
+            resolve(v || null);
+          };
+        } catch(e){ resolve(null); }
+      };
+    } catch(e){ resolve(null); }
+  });
+}
+function readNameFromBoot(){
+  return readKv('boot').then(function (boot){
+    try { return String((boot && boot.user && boot.user.name) || '').trim(); } catch(e){ return ''; }
+  });
+}
+function readSharedFromIdb(){
+  return Promise.all([readKv('game'), readKv('boot')]).then(function (pair){
+    const game = pair[0], boot = pair[1];
+    const mode = (game && game.mode) || (boot && boot.gameScoresMode);
+    if (mode === 'off') return null;
+    return cleanBest((game && game.sparkyMaster) || (boot && boot.sparkyMaster) || null);
+  });
+}
 
 // ---------- Canvas / scaling ----------
 const canvas = document.getElementById('game');
@@ -438,7 +554,30 @@ const LINES = {
 };
 var state = 'start';  // start | run | over
 var paused = false;
-let hi = parseInt(LS.get(HI_KEY, '0'), 10) || 0;
+let localMaster = loadLocalMaster();
+let sharedMaster = loadStashedShared();
+let master = betterBest(localMaster, sharedMaster) || loadStashedBanner() || localMaster;
+let hi = localMaster.score || 0;
+function applyBanner(){
+  master = betterBest(localMaster, sharedMaster) || localMaster;
+  fillMasterBanner(master);
+}
+applyBanner();
+(function refreshPlayerName(){
+  if (readStashedName()) return;
+  readNameFromBoot().then(function (n){
+    if (!n) return;
+    try { sessionStorage.setItem(NAME_KEY, n); } catch(e){}
+  });
+})();
+(function refreshSharedMaster(){
+  if (sharedMaster) return;
+  readSharedFromIdb().then(function (s){
+    if (!s) return;
+    sharedMaster = s;
+    applyBanner();
+  });
+})();
 let P, obstacles, items, particles, popups, speed, dist, bonus, coins, runTime, nextSpawn, lastMile, overAt, overLine, newHi, flashT, groundOff, bgOff;
 function reset(){
   P = { x: 28, y: 0, vy: 0, onGround: true, ducking: false, holdT: 0, holding: false, anim: 0, inv: 0, deadRot: 0, fastFall: false };
@@ -457,7 +596,14 @@ function gameOver(type){
   const s = score();
   overLine = pick((LINES[type] || []).concat(LINES[type] ? [] : LINES.any));
   if (Math.random() < 0.25) overLine = pick(LINES.any);
-  if (s > hi){ hi = s; newHi = true; LS.set(HI_KEY, String(hi)); }
+  if (s > hi){
+    hi = s;
+    localMaster = { score: s, name: playerName(), date: todayStamp() };
+    saveMaster(localMaster);
+    const held = !(sharedMaster && sharedMaster.score > s);
+    newHi = held;
+    applyBanner();
+  }
   SFX.hit();
   for (let i = 0; i < 18; i++) particles.push({ x: P.x + 8, y: GROUND - 10 + P.y, vx: rand(-80, 80), vy: rand(-160, -20), life: rand(0.4, 0.9), c: pick(['#f5c400', '#fff27a', '#d71920', '#ffffff']) });
 }
@@ -692,14 +838,13 @@ function text(t, x, y, size, col, align, weight){
   ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = col; ctx.fillText(t, x, y);
 }
 const pad = n => String(n).padStart(5, '0');
-const scoreValEl = document.getElementById('scoreVal'), hiValEl = document.getElementById('hiVal');
-let lastShown = '', lastHi = '', lastFlash = null;
+const scoreValEl = document.getElementById('scoreVal');
+let lastShown = '', lastFlash = null;
 function updateScoreBar(s, show){
-  const v = pad(s), h = pad(hi);
-  if (v !== lastShown){ scoreValEl.textContent = v; lastShown = v; }
-  if (h !== lastHi){ hiValEl.textContent = h; lastHi = h; }
+  const v = pad(s);
+  if (scoreValEl && v !== lastShown){ scoreValEl.textContent = v; lastShown = v; }
   const f = !show;
-  if (f !== lastFlash){ scoreValEl.classList.toggle('flash', f); lastFlash = f; }
+  if (f !== lastFlash){ if (scoreValEl) scoreValEl.classList.toggle('flash', f); lastFlash = f; }
 }
 
 function drawBackground(t){
@@ -840,12 +985,19 @@ function drawStart(t){
 }
 
 function drawOver(t){
-  const pw = Math.min(W - 16, 236), px0 = Math.round((W - pw) / 2), py = Math.max(3, Math.round((GROUND - 24 - 62) / 2));
-  panel(px0, py, pw, 62);
+  const extra = newHi ? 10 : 0;
+  const pw = Math.min(W - 16, 236), px0 = Math.round((W - pw) / 2), py = Math.max(3, Math.round((GROUND - 24 - 62 - extra) / 2));
+  panel(px0, py, pw, 62 + extra);
   text('GAME OVER', W / 2, py + 15, 12, '#d71920', 'center', '900');
   text(overLine, W / 2, py + 29, 8, '#ffffff', 'center', '700');
-  text('SCORE ' + score() + (newHi ? '  ★ NEW HIGH SCORE!' : '   HI ' + hi), W / 2, py + 42, 7, newHi ? '#f5c400' : '#bbbbbb', 'center');
-  if (performance.now() - overAt > 600 && Math.floor(t * 2) % 2 === 0) text('TAP OR PRESS JUMP TO RESTART', W / 2, py + 55, 6, '#ffffff', 'center');
+  if (newHi){
+    text('NEW SPARKY MASTER!', W / 2, py + 44, 8, '#f5c400', 'center', '900');
+    text('SCORE ' + score() + (master.name ? '  ·  ' + master.name : ''), W / 2, py + 56, 7, '#f5c400', 'center');
+  } else {
+    text('SCORE ' + score() + '   HI ' + hi, W / 2, py + 42, 7, '#bbbbbb', 'center');
+  }
+  const hintY = py + (newHi ? 67 : 55);
+  if (performance.now() - overAt > 600 && Math.floor(t * 2) % 2 === 0) text('TAP OR PRESS JUMP TO RESTART', W / 2, hintY, 6, '#ffffff', 'center');
 }
 
 function render(t){
@@ -904,8 +1056,9 @@ requestAnimationFrame(frame);
 
 // Test/debug hook: only exists when the URL has ?debug=1
 if (/[?&]debug=1(&|$)/.test(location.search)) window.__sparky = {
-  get state(){ return state; }, get score(){ return score(); }, get paused(){ return paused; },
+  get state(){ return state; }, get score(){ return score(); }, get paused(){ return paused; }, get master(){ return master; }, get localMaster(){ return localMaster; }, get sharedMaster(){ return sharedMaster; }, get newHi(){ return !!newHi; },
   get speed(){ return speed; }, get inv(){ return P.inv; }, get y(){ return P.y; }, get rotated(){ return rotated; }, get geom(){ return { W, H, S, GROUND, band: GROUND_BAND }; }, get ducking(){ return P.ducking; }, get onGround(){ return P.onGround; }, get bonus(){ return bonus; },
+  startRun(){ startRun(); }, setScore(n){ bonus = Math.max(0, Math.floor(+n || 0)); dist = 0; }, pause(){ if (state === 'run'){ paused = true; updatePauseIcon(); } }, resume(){ if (state === 'run'){ paused = false; updatePauseIcon(); last = performance.now(); } },
   godMode(sec){ P.inv = sec || 9999; }, ghost(on){ dbgGhost = !!on; }, overhead(type){ obstacles.length = 0; items.length = 0; obstacles.push({ type: type || 'conduit', x: W + 12, w: type === 'beam' ? 40 : 34, h: type === 'beam' ? 8 : 6, over: true }); nextSpawn = 2000; }, forceOver(type){ if (state === 'run') gameOver(type || 'cord'); }
 };
 })();

@@ -5126,11 +5126,16 @@
 
 
 
-  /* ================= Sparky Run (v1.9.4) =================
+  /* ================= Sparky Run (v1.9.4 / v1.9.5) =================
    * Tools > Sparky Run. A local, offline mini-game (web/sparky.html). Visible to every tech on the
-   * phone app. Not listed in TOOLS_ORDER, so it is appended at the end. High score stays in
-   * localStorage; no server calls. The tile is hidden in the Apps Script web app, which does not
-   * host sparky.html. Hooks end in "// v1.9.4 sparky-hook".
+   * phone app. Not listed in TOOLS_ORDER, so it is appended at the end. Each phone keeps its own
+   * best in localStorage and flushes an improved best with the regular apiSync (no game request).
+   * The shared Sparky Master is stashed in sessionStorage (and also readable from IndexedDB) so
+   * the banner can show max(shared top, local best). Hidden in the Apps Script web app, which does
+   * not host sparky.html. Hooks end in "// v1.9.4 sparky-hook".
+   * v1.9.5: before leaving, replace #tool/sparky with #tools so Android back returns to Tools
+   * (not into a redirect loop), stash the signed-in name and last shared master in sessionStorage,
+   * and open the game with location.assign (never replace).
    */
   ICONS.sparky = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>';
   var SPARKY_TOOL = { id: 'sparky', title: 'Sparky Run', subtitle: 'Quick break game', icon: 'sparky',
@@ -5142,11 +5147,33 @@
     if (on && i < 0) TOOLS.push(SPARKY_TOOL);
     if (!on && i >= 0) TOOLS.splice(i, 1);
   }
+  function sparkyRememberPlayer() {
+    var name = (S.boot && S.boot.user && S.boot.user.name) || '';
+    var eng = window.WES_ENGINE;
+    var shared = null, banner = null;
+    try {
+      if (eng && typeof eng.sparkyShared === 'function') shared = eng.sparkyShared();
+      else if (S.boot && S.boot.sparkyMaster) shared = S.boot.sparkyMaster;
+      if (eng && typeof eng.sparkyBanner === 'function') banner = eng.sparkyBanner();
+    } catch (e) {}
+    try {
+      sessionStorage.setItem('wes_sparky_from_app', '1');
+      if (name) sessionStorage.setItem('wes_sparky_name', name);
+      if (shared) sessionStorage.setItem('wes_sparky_shared', JSON.stringify(shared));
+      else sessionStorage.removeItem('wes_sparky_shared');
+      if (banner) sessionStorage.setItem('wes_sparky_banner', JSON.stringify(banner));
+      else sessionStorage.removeItem('wes_sparky_banner');
+    } catch (e) {}
+  }
   function goSparky() {
     var href = 'sparky.html?from=app';
     window.WES_SPARKY_HREF = href;
+    sparkyRememberPlayer();
     if (window.WES_TEST_STORE) return; // tests: do not navigate jsdom off the app page
-    location.href = href;
+    // Drop the #tool/sparky history entry so the Android back gesture returns to Tools
+    // instead of re-entering the game (v1.9.4 loop). Then push the game page with assign.
+    try { history.replaceState(null, '', location.pathname + location.search + '#tools'); } catch (e) {}
+    location.assign(href);
   }
 
   /* ================= Private usage counter (v1.9.1) =================
